@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f7f4" />
+    <title>sia’s investing · 实时数据看板</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">SIA</div>
+          <div>
+            <div class="brand-name">sia’s investing</div>
+            <div class="brand-subtitle">Personal Investing · Live Board</div>
+          </div>
+        </div>
+
+        <nav class="main-nav" aria-label="主导航">
+          <button class="nav-item" data-view="overview">红利股票</button>
+          <button class="nav-item" data-view="calendar">分红日历</button>
+          <button class="nav-item" data-view="crypto">虚拟币</button>
+          <button class="nav-item is-active" data-view="account">我的账户</button>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="market-status"><span class="status-dot" id="marketStatusDot"></span><span id="marketStatusText">行情连接中</span></span>
+          <button class="icon-button" id="refreshButton" type="button" title="立即刷新行情" aria-label="立即刷新行情">
+            ↻
+          </button>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div id="overviewView" class="view-section">
+        <section class="metric-grid overview-metric-grid" aria-label="核心指标">
+          <article class="metric-card live-clock-card">
+            <span class="live-pulse"></span>
+            <span>实时价格</span>
+            <strong id="lastUpdated">--:--:--</strong>
+            <small id="stockDataSource">等待股票行情</small>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">跟踪标的</div>
+            <div class="metric-value" id="metricTracked">76</div>
+            <div class="metric-meta positive">↑ 4.2% <span>较上月</span></div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">组合平均股息率</div>
+            <div class="metric-value"><span id="metricYield">4.58</span><small>%</small></div>
+            <div class="metric-meta positive">↑ 0.18% <span>近 30 日</span></div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">连续分红中位数</div>
+            <div class="metric-value"><span id="metricYears">20</span><small> 年</small></div>
+            <div class="metric-meta neutral">稳定性评分 <span class="score-chip">A-</span></div>
+          </article>
+          <article class="metric-card metric-card-alert">
+            <div class="metric-label">今日价格触发</div>
+            <div class="metric-value" id="metricTriggers">08</div>
+            <div class="metric-meta alert">进入首仓区 <span>待关注</span></div>
+          </article>
+          <article class="metric-card metric-card-alert">
+            <div class="metric-label">今日价格触发加仓价</div>
+            <div class="metric-value" id="metricAddTriggers">00</div>
+            <div class="metric-meta alert">进入加仓区 <span>待关注</span></div>
+          </article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel trend-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">策略观察</p>
+                <h2>价格与息率趋势</h2>
+              </div>
+              <div class="panel-controls">
+                <select id="trendStockSelect" aria-label="选择趋势标的"></select>
+                <div class="period-tabs" role="tablist" aria-label="趋势周期">
+                  <button class="period-tab" data-period="1M">1M</button>
+                  <button class="period-tab is-active" data-period="3M">3M</button>
+                  <button class="period-tab" data-period="1Y">1Y</button>
+                  <button class="period-tab" data-period="3Y">3Y</button>
+                </div>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <span><i class="legend-line legend-price"></i>最新价</span>
+              <span><i class="legend-line legend-yield"></i>股息率</span>
+              <span class="chart-note" id="trendSummary">长江电力 · 600900</span>
+            </div>
+            <div class="trend-chart-wrap" id="trendChart" aria-label="价格与息率趋势图"></div>
+            <div class="chart-axis" id="trendChartAxis"><span>04/01</span><span>04/15</span><span>05/01</span><span>05/15</span><span>06/01</span><span>06/15</span></div>
+          </article>
+
+          <article class="panel sector-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">行业结构</p>
+                <h2>红利来源分布</h2>
+              </div>
+              <span class="panel-count" id="sectorCount">4 大类</span>
+            </div>
+            <div class="sector-chart" id="sectorChart"></div>
+            <div class="sector-footer">
+              <div><span class="sector-total-dot"></span><strong id="sectorTopName">银行</strong><span id="sectorTopShare">42%</span></div>
+              <span class="muted">按白名单统计</span>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel opportunity-panel">
+          <div class="panel-heading table-heading">
+            <div>
+              <p class="panel-kicker">执行清单</p>
+              <h2>红利机会池</h2>
+            </div>
+            <div class="table-actions">
+              <label class="search-box">
+                <span aria-hidden="true">⌕</span>
+                <input id="searchInput" type="search" placeholder="搜索名称或代码" autocomplete="off" />
+              </label>
+              <select id="sectorFilter" aria-label="筛选行业">
+                <option value="all">全部行业</option>
+              </select>
+              <label class="switch-control">
+                <input id="liveToggle" type="checkbox" checked />
+                <span class="switch" aria-hidden="true"></span>
+                <span>自动刷新</span>
+              </label>
+              <label class="switch-control">
+                <input id="whitelistToggle" type="checkbox" checked />
+                <span class="switch" aria-hidden="true"></span>
+                <span>仅白名单</span>
+              </label>
+            </div>
+          </div>
+          <div class="table-meta">
+            <span id="tableSummary">显示 0 个标的</span>
+            <span class="table-note">价格每 5 秒更新 · 目标价按目标息率反推</span>
+          </div>
+          <div class="table-scroll">
+            <table class="opportunity-table">
+              <thead>
+                <tr>
+                  <th><button class="sort-button" data-sort="name">标的</button></th>
+                  <th><button class="sort-button" data-sort="price">最新价</button></th>
+                  <th><button class="sort-button" data-sort="yieldNew">股息率 <span class="th-muted">新 / 均 / 低</span></button></th>
+                  <th><button class="sort-button" data-sort="years">连续分红</button></th>
+                  <th><button class="sort-button" data-sort="drawdown">需跌幅</button></th>
+                  <th>首仓价</th>
+                  <th>加仓价</th>
+                  <th>重仓价</th>
+                </tr>
+              </thead>
+              <tbody id="opportunityTableBody"></tbody>
+            </table>
+          </div>
+          <div class="table-footer">
+            <span id="tableRange">显示全部标的</span>
+            <span class="table-footer-note" id="overviewDataSource">数据源连接中</span>
+          </div>
+        </section>
+        </div>
+
+        <div id="cryptoView" class="view-section">
+          <section class="metric-grid crypto-metric-grid" aria-label="虚拟币市场指标">
+            <article class="metric-card crypto-status-card">
+              <span class="status-dot" id="cryptoStatusDot"></span>
+              <span id="cryptoStatusText">加密行情连接中</span>
+              <strong id="cryptoLastUpdated">--:--:--</strong>
+              <small id="cryptoDataSource">等待 10 分钟轮询</small>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">加密市场总市值</div>
+              <div class="metric-value"><span id="cryptoMetricCap">2.48</span><small> T</small></div>
+              <div class="metric-meta positive">↑ 2.8% <span>24 小时</span></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">BTC 市场占比</div>
+              <div class="metric-value"><span id="cryptoMetricDominance">56.8</span><small>%</small></div>
+              <div class="metric-meta neutral">主导趋势 <span class="score-chip">稳定</span></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">24 小时成交额</div>
+              <div class="metric-value"><span id="cryptoMetricVolume">86.4</span><small> B</small></div>
+              <div class="metric-meta positive">↑ 11.6% <span>活跃度上升</span></div>
+            </article>
+            <article class="metric-card metric-card-alert">
+              <div class="metric-label">市场情绪指数</div>
+              <div class="metric-value"><span id="cryptoMetricFear">72</span><small> / 100</small></div>
+              <div class="metric-meta alert">贪婪区间 <span>注意回撤</span></div>
+            </article>
+          </section>
+
+          <section class="dashboard-grid">
+            <article class="panel trend-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="panel-kicker">行情观察</p>
+                  <h2>价格与趋势线</h2>
+                </div>
+                <div class="panel-controls">
+                  <select id="cryptoSelect" aria-label="选择虚拟币"></select>
+                  <div class="period-tabs" role="tablist" aria-label="虚拟币趋势周期">
+                    <button class="period-tab crypto-period-tab" data-period="24H">24H</button>
+                    <button class="period-tab crypto-period-tab is-active" data-period="7D">7D</button>
+                    <button class="period-tab crypto-period-tab" data-period="30D">30D</button>
+                  </div>
+                </div>
+              </div>
+              <div class="chart-legend">
+                <span><i class="legend-line legend-price"></i>价格</span>
+                <span><i class="legend-line legend-yield"></i>EMA20</span>
+                <span class="chart-note" id="cryptoTrendSummary">BTC · Bitcoin</span>
+              </div>
+              <div class="trend-chart-wrap" id="cryptoTrendChart" aria-label="虚拟币价格趋势图"></div>
+              <div class="chart-axis" id="cryptoChartAxis"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>今天</span></div>
+            </article>
+
+            <article class="panel analysis-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="panel-kicker">市场信号</p>
+                  <h2>多维度分析</h2>
+                </div>
+                <span class="panel-count">实时计算</span>
+              </div>
+              <div class="signal-list">
+                <div class="signal-row">
+                  <div><span class="signal-label">市场情绪</span><strong id="signalSentiment">偏多</strong></div>
+                  <div class="signal-track"><span id="signalSentimentBar" class="signal-fill signal-fill-green"></span></div>
+                  <span id="signalSentimentValue" class="signal-value">72</span>
+                </div>
+                <div class="signal-row">
+                  <div><span class="signal-label">趋势强度</span><strong id="signalTrend">强势</strong></div>
+                  <div class="signal-track"><span id="signalTrendBar" class="signal-fill signal-fill-blue"></span></div>
+                  <span id="signalTrendValue" class="signal-value">78</span>
+                </div>
+                <div class="signal-row">
+                  <div><span class="signal-label">波动风险</span><strong id="signalRisk">中等</strong></div>
+                  <div class="signal-track"><span id="signalRiskBar" class="signal-fill signal-fill-amber"></span></div>
+                  <span id="signalRiskValue" class="signal-value">46</span>
+                </div>
+                <div class="signal-row">
+                  <div><span class="signal-label">资金流向</span><strong id="signalFlow">净流入</strong></div>
+                  <div class="signal-track"><span id="signalFlowBar" class="signal-fill signal-fill-green"></span></div>
+                  <span id="signalFlowValue" class="signal-value">65</span>
+                </div>
+              </div>
+              <div class="analysis-summary">
+                <span class="summary-icon">↗</span>
+                <div><strong id="cryptoSummaryTitle">BTC 处于上升趋势</strong><span id="cryptoSummaryText">价格运行在短期均线之上，回踩支撑后仍有延续空间。</span></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="panel crypto-table-panel">
+            <div class="panel-heading table-heading">
+              <div>
+                <p class="panel-kicker">资产雷达</p>
+                <h2>主流币行情</h2>
+              </div>
+              <div class="table-actions">
+                <label class="search-box">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="cryptoSearchInput" type="search" placeholder="搜索币种或代码" autocomplete="off" />
+                </label>
+                <select id="cryptoSignalFilter" aria-label="筛选虚拟币信号">
+                  <option value="all">全部信号</option>
+                  <option value="bullish">偏多</option>
+                  <option value="watch">观察</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-meta">
+              <span id="cryptoTableSummary">显示 0 个币种</span>
+              <span class="table-note">价格每 10 分钟更新 · 支持手动刷新</span>
+            </div>
+            <div class="table-scroll">
+              <table class="opportunity-table crypto-table">
+                <thead>
+                  <tr>
+                    <th>币种 / 代码</th>
+                    <th>最新价</th>
+                    <th>24H</th>
+                    <th>7D</th>
+                    <th>波动率</th>
+                    <th>市值</th>
+                    <th>信号</th>
+                    <th>关键区间</th>
+                  </tr>
+                </thead>
+                <tbody id="cryptoTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div id="dividendView" class="view-section">
+          <section class="panel dividend-panel">
+            <div class="panel-heading dividend-heading">
+              <div>
+                <p class="panel-kicker">近期派息</p>
+                <h2>半年内即将分红</h2>
+                <p class="dividend-subtitle">按除权除息日正序 · 条数：<strong id="dividendCount">0</strong></p>
+              </div>
+              <div class="live-clock dividend-clock">
+                <span class="live-pulse"></span>
+                <span>每日更新</span>
+                <strong id="dividendLastUpdated">--:--:--</strong>
+                <small id="dividendDataSource">等待分红数据</small>
+              </div>
+              <div class="table-actions">
+                <select id="dividendProgressFilter" aria-label="筛选分红进度">
+                  <option value="all">全部进度</option>
+                  <option value="实施分配">实施分配</option>
+                  <option value="股东大会通过">股东大会通过</option>
+                  <option value="董事会决议通过">董事会决议通过</option>
+                </select>
+                <button class="secondary-button compact-button" id="dividendRefreshButton" type="button"><span aria-hidden="true">↻</span> 更新</button>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="opportunity-table dividend-table">
+                <thead>
+                  <tr>
+                    <th>除权除息日</th>
+                    <th>股票</th>
+                    <th>代码</th>
+                    <th>每股派现</th>
+                    <th>股息率</th>
+                    <th>进度</th>
+                    <th>方案</th>
+                  </tr>
+                </thead>
+                <tbody id="dividendTableBody"></tbody>
+              </table>
+            </div>
+            <div class="table-footer dividend-footer">
+              <span id="dividendDateRange">覆盖未来 6 个月</span>
+              <span class="table-footer-note" id="dividendFooterSource">数据源连接中</span>
+            </div>
+          </section>
+        </div>
+
+        <div id="accountView" class="view-section is-active">
+          <div class="account-type-tabs" role="tablist" aria-label="账户类型">
+            <button class="account-type-tab is-active" type="button" data-account-type="stock" role="tab" aria-selected="true">
+              <span>股票账户</span><small>人民币 · 红利股票</small>
+            </button>
+            <button class="account-type-tab" type="button" data-account-type="crypto" role="tab" aria-selected="false">
+              <span>美元账户</span><small>美元 · 虚拟币</small>
+            </button>
+            <button class="account-type-tab" type="button" data-account-type="fixed" role="tab" aria-selected="false">
+              <span>固定账户</span><small>人民币 · 定期 / 现金</small>
+            </button>
+          </div>
+          <section class="account-summary-strip" aria-label="账户汇总">
+            <div class="live-clock account-sync-card">
+              <span class="live-pulse"></span>
+              <span>持仓同步</span>
+              <strong id="accountLastUpdated">--:--:--</strong>
+            </div>
+            <div class="metric-grid account-metric-grid">
+              <article class="metric-card">
+                <div class="metric-label" id="accountMetricValueLabel">持仓市值</div>
+                <div class="metric-value"><span id="accountMetricValue">0.00</span><small id="accountCurrencyValue">人民币</small></div>
+                <div class="metric-meta neutral" id="accountMetricValueMeta">当前行情估值</div>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label" id="accountMetricCostLabel">投入成本</div>
+                <div class="metric-value"><span id="accountMetricCost">0.00</span><small id="accountCurrencyCost">人民币</small></div>
+                <div class="metric-meta neutral" id="accountMetricCostMeta">买入价 × 数量</div>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label" id="accountMetricProfitLabel">累计收益</div>
+                <div class="metric-value" id="accountMetricProfit">0.00</div>
+                <div class="metric-meta positive" id="accountMetricProfitMeta">收益率 0.00%</div>
+              </article>
+              <article class="metric-card metric-card-alert account-dividend-only account-annual-card" id="accountDividendMetric">
+                <div class="metric-label" id="accountMetricDividendLabel">预计年度分红</div>
+                <div class="metric-value"><span id="accountMetricDividend">0.00</span><small id="accountCurrencyDividend">人民币</small></div>
+                <div class="metric-meta alert" id="accountMetricYieldMeta">持仓股息率 0.00%</div>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel account-form-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="panel-kicker">手动录入</p>
+                  <h2 id="accountFormTitle">添加一笔持仓</h2>
+                </div>
+                <span class="panel-count" id="accountFormScope">当前录入：股票账户</span>
+              </div>
+            <form class="account-form" id="accountForm">
+              <label class="form-field">
+                <span>标的</span>
+                <input id="accountTargetInput" type="text" placeholder="名称 / 代码 / 币种代码" autocomplete="off" required />
+                <small id="accountMarketHint">输入后自动匹配行情</small>
+              </label>
+              <label class="form-field">
+                <span id="accountBuyPriceLabel">买入价</span>
+                <input id="accountBuyPriceInput" type="number" min="0" step="0.0001" placeholder="0.00" required />
+                <small id="accountBuyPriceHint">按单价填写</small>
+              </label>
+              <label class="form-field">
+                <span id="accountCurrentPriceLabel">当前价</span>
+                <input id="accountCurrentPriceInput" type="number" min="0" step="0.01" placeholder="自动获取" readonly />
+                <small id="accountCurrentPriceHint">股票每 5 秒，虚拟币每 10 分钟或手动刷新</small>
+              </label>
+              <label class="form-field">
+                <span id="accountQuantityLabel">数量</span>
+                <input id="accountQuantityInput" type="number" min="0" step="0.0001" placeholder="1" required />
+                <small id="accountQuantityHint">股票按股，虚拟币按枚</small>
+              </label>
+              <label class="form-field account-dividend-only">
+                <span>当前股息率</span>
+                <input id="accountYieldInput" type="text" placeholder="自动计算" readonly />
+                <small>股票行情自动带入</small>
+              </label>
+              <label class="form-field account-dividend-only">
+                <span>每股分红</span>
+                <input id="accountDividendInput" type="number" min="0" step="0.0001" placeholder="可手动覆盖" />
+                <small>留空则按当前股息率估算</small>
+              </label>
+              <label class="form-field account-note-field">
+                <span>备注</span>
+                <input id="accountNoteInput" type="text" maxlength="120" placeholder="可选" />
+                <small>记录策略、期限等信息</small>
+              </label>
+              <div class="account-form-actions">
+                <button class="primary-button" id="accountFormSubmit" type="submit"><span aria-hidden="true">＋</span> 添加持仓</button>
+                <button class="secondary-button" id="accountResetButton" type="button">清空</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel account-holdings-panel">
+            <div class="panel-heading table-heading">
+              <div>
+                <p class="panel-kicker">持仓明细</p>
+                <h2 id="accountViewTitle">股票账户</h2>
+              </div>
+              <div class="table-actions">
+                <span class="account-live-label"><span class="status-dot" id="accountStatusDot"></span><span id="accountDataSource">当前价自动刷新</span></span>
+                <button class="secondary-button compact-button" id="accountRefreshButton" type="button"><span aria-hidden="true">↻</span> 刷新</button>
+              </div>
+            </div>
+            <div class="table-meta">
+              <span id="accountTableSummary">共 0 笔持仓</span>
+              <span class="table-note" id="accountTableNote">收益 =（当前价 - 买入价）× 数量 · 单位：人民币</span>
+            </div>
+            <div class="table-scroll">
+              <table class="opportunity-table account-table">
+                <thead>
+                  <tr>
+                    <th>标的</th>
+                    <th id="accountBuyPriceHeader">买入价</th>
+                    <th id="accountTotalHeader">买入总价</th>
+                    <th id="accountCurrentPriceHeader">当前价</th>
+                    <th id="accountQuantityHeader">数量</th>
+                    <th id="accountProfitRateHeader">收益率</th>
+                    <th>收益</th>
+                    <th class="account-dividend-only">当前股息率</th>
+                    <th class="account-dividend-only">分红</th>
+                    <th>备注</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="accountTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="app-footer">
+        <span>sia’s investing / Personal Investing</span>
+        <span>仅用于研究与信息展示，不构成投资建议</span>
+      </footer>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./stock-data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
