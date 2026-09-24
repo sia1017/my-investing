@@ -43,13 +43,13 @@ button { cursor: pointer; }
   background: rgba(255, 255, 255, 0.96);
   display: flex;
   align-items: center;
-  gap: 36px;
+  gap: 24px;
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
-.brand-lockup { display: flex; align-items: center; gap: 11px; min-width: 220px; }
+.brand-lockup { display: flex; align-items: center; gap: 11px; min-width: 64px; }
 .brand-mark {
   width: 42px;
   height: 30px;
@@ -65,19 +65,35 @@ button { cursor: pointer; }
 .brand-name { font-weight: 750; letter-spacing: 0.02em; }
 .brand-subtitle { color: var(--muted-2); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
 
-.main-nav { display: flex; gap: 24px; height: 100%; align-items: center; }
-.nav-item {
+.main-nav {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
   height: 100%;
-  padding: 0 2px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
+  align-items: center;
+  flex: 1;
+}
+.nav-item {
+  width: 100%;
+  height: 48px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
   color: var(--muted);
   font-size: 13px;
-  transition: color 160ms ease, border-color 160ms ease;
+  font-weight: 750;
+  text-align: left;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 .nav-item:hover, .nav-item.is-active { color: var(--ink); }
-.nav-item.is-active { border-bottom-color: var(--green); font-weight: 700; }
+.nav-item.is-active {
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-weight: 700;
+}
 
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 .market-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
@@ -180,6 +196,17 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
   gap: 6px;
   margin-bottom: 8px;
 }
+.main-nav .account-type-tabs {
+  display: contents;
+  width: auto;
+  margin: 0;
+}
+.main-nav .account-type-tab {
+  width: 100%;
+  height: 48px;
+  min-width: 0;
+  padding: 5px 8px;
+}
 .account-type-tab {
   min-width: 150px;
   padding: 6px 10px;
@@ -198,6 +225,7 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
   background: var(--green-soft);
   color: var(--green);
 }
+.account-type-tab:nth-child(2) { margin-right: 0; }
 .account-type-tab.is-active small { color: var(--green); }
 .account-sync-card {
   min-width: 0;
@@ -220,8 +248,13 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
   font-size: 21px;
   white-space: nowrap;
 }
-.account-metric-grid .metric-value small { font-size: 11px; }
+.account-metric-grid .metric-value small { margin-left: 5px; font-size: 11px; }
 .account-metric-grid .metric-meta { font-size: 9px; }
+.account-extra-metric { display: none; }
+.account-extra-metric.is-visible { display: block; }
+#accountView.is-crypto-account .account-metric-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+#accountView.is-fixed-account #accountDividendMetric { display: none; }
+#accountView.is-fixed-account .account-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .crypto-market-pill {
   min-width: 190px;
   padding: 11px 14px;
@@ -299,12 +332,14 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .crypto-range { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .account-form-panel { padding: 15px 18px 16px; margin-bottom: 10px; }
 #accountView.is-crypto-account .account-dividend-only { display: none; }
-#accountView.is-crypto-account .account-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#accountView.is-crypto-account .account-metric-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 #accountView.is-crypto-account .account-form,
-#accountView.is-fixed-account .account-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#accountView.is-fixed-account .account-form { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+#accountView.is-stock-account .account-form { grid-template-columns: repeat(8, minmax(0, 1fr)); }
 #accountView.is-fixed-account .account-dividend-only { display: none; }
 #accountView.is-fixed-account .account-annual-card { display: block; }
-#accountView.is-fixed-account .account-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#accountView.is-fixed-account .account-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#accountView.is-fixed-account .account-form .form-field small { display: none; }
 .account-form { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 14px; align-items: start; }
 .form-field { display: grid; gap: 4px; }
 .form-field > span { color: var(--muted); font-size: 10px; font-weight: 700; }
@@ -342,6 +377,41 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .account-live-label .status-dot { width: 6px; height: 6px; box-shadow: 0 0 0 3px var(--green-soft); }
 .account-holdings-panel { overflow: hidden; }
 .account-table { min-width: 1260px; }
+#accountView.is-stock-account .account-table {
+  min-width: 1080px;
+  table-layout: fixed;
+}
+#accountView.is-stock-account .account-table th,
+#accountView.is-stock-account .account-table td {
+  padding-left: 10px;
+  padding-right: 10px;
+  text-align: center;
+}
+#accountView.is-stock-account .account-table th:first-child,
+#accountView.is-stock-account .account-table td:first-child {
+  width: 15%;
+  text-align: left;
+}
+#accountView.is-stock-account .account-table th:nth-child(2),
+#accountView.is-stock-account .account-table td:nth-child(2) { width: 8%; }
+#accountView.is-stock-account .account-table th:nth-child(3),
+#accountView.is-stock-account .account-table td:nth-child(3) { width: 7%; }
+#accountView.is-stock-account .account-table th:nth-child(4),
+#accountView.is-stock-account .account-table td:nth-child(4) { width: 11%; }
+#accountView.is-stock-account .account-table th:nth-child(5),
+#accountView.is-stock-account .account-table td:nth-child(5) { width: 9%; }
+#accountView.is-stock-account .account-table th:nth-child(6),
+#accountView.is-stock-account .account-table td:nth-child(6) { width: 8%; }
+#accountView.is-stock-account .account-table th:nth-child(7),
+#accountView.is-stock-account .account-table td:nth-child(7) { width: 10%; }
+#accountView.is-stock-account .account-table th:nth-child(8),
+#accountView.is-stock-account .account-table td:nth-child(8) { width: 9%; }
+#accountView.is-stock-account .account-table th:nth-child(9),
+#accountView.is-stock-account .account-table td:nth-child(9) { width: 11%; }
+#accountView.is-stock-account .account-table th:nth-child(10),
+#accountView.is-stock-account .account-table td:nth-child(10) { width: 8%; }
+#accountView.is-stock-account .account-table th:nth-child(11),
+#accountView.is-stock-account .account-table td:nth-child(11) { width: 4%; }
 .account-note-cell { max-width: 180px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-summary-row td {
   background: var(--surface-soft);
@@ -467,6 +537,60 @@ select:focus, input:focus { border-color: var(--green); }
 .opportunity-table tbody tr { transition: background 130ms ease; }
 .opportunity-table tbody tr:hover, .opportunity-table tbody tr.is-selected { background: #f5f9f5; }
 .opportunity-table tbody tr { cursor: pointer; }
+.opportunity-table tbody tr.inline-stock-detail { cursor: default; }
+.opportunity-table tbody tr.inline-stock-detail:hover { background: transparent; }
+.inline-stock-detail td { padding: 14px 18px 18px !important; background: #fbfcfb; }
+.inline-stock-detail-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.inline-stock-detail-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.inline-stock-detail-heading strong { display: block; font-size: 15px; }
+.inline-stock-detail-heading span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.inline-period-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 6px; background: var(--surface-soft); }
+.inline-period-tabs button {
+  min-width: 36px;
+  height: 28px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+}
+.inline-period-tabs button.is-active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.inline-stock-chart { min-height: 220px; }
+.inline-stock-chart svg { width: 100%; height: 190px; overflow: visible; }
+.inline-chart-legend { display: flex; gap: 18px; margin-bottom: 8px; color: var(--muted); font-size: 11px; }
+.inline-stock-metrics {
+  display: flex;
+  align-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px;
+}
+.inline-stock-metrics span {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-weight: 750;
+}
+.inline-stock-metrics b { color: var(--muted); font-weight: 700; }
 .sort-button { padding: 0; border: 0; background: transparent; color: inherit; font-size: inherit; font-weight: inherit; }
 .sort-button:hover { color: var(--green); }
 .th-muted { color: var(--muted-2); font-weight: 500; }
@@ -509,12 +633,13 @@ select:focus, input:focus { border-color: var(--green); }
 @media (max-width: 1040px) {
   .topbar { gap: 20px; padding: 0 20px; }
   .brand-lockup { min-width: auto; }
-  .main-nav { gap: 14px; }
+  .main-nav { gap: 8px; }
   .main-content { padding: 28px 20px 20px; }
   .table-heading { align-items: flex-start; flex-direction: column; }
   .table-actions { justify-content: flex-start; }
   .overview-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .account-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #accountView.is-stock-account .account-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .account-form-actions { padding-bottom: 0; }
   .app-footer { padding: 0 20px 20px; }
   .account-summary-strip { grid-template-columns: 150px minmax(0, 1fr); }
@@ -525,8 +650,10 @@ select:focus, input:focus { border-color: var(--green); }
 @media (max-width: 760px) {
   .topbar { height: auto; min-height: 62px; padding: 10px 16px; flex-wrap: wrap; }
   .brand-lockup { flex: 1; }
-  .main-nav { order: 3; width: 100%; height: 34px; justify-content: space-between; }
-  .nav-item { height: 34px; flex: 1; }
+  .main-nav { order: 3; width: 100%; height: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .main-nav .account-type-tabs { width: auto; }
+  .main-nav .account-type-tab { padding-left: 5px; padding-right: 5px; }
+  .nav-item { height: 44px; }
   .market-status { display: none; }
   .main-content { padding: 24px 14px 16px; }
   .hero-row { align-items: flex-start; flex-direction: column; gap: 16px; }
@@ -541,14 +668,20 @@ select:focus, input:focus { border-color: var(--green); }
   .account-type-tab { flex: 1; min-width: 0; }
   .account-sync-card { min-height: 72px; }
   .account-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #accountView.is-crypto-account .account-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #accountView.is-crypto-account .account-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .account-metric-grid .metric-card { min-height: 94px; padding: 13px; }
   .account-metric-grid .metric-value { font-size: 23px; }
   .account-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #accountView.is-stock-account .account-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #accountView.is-fixed-account .account-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .account-form-actions { grid-column: 1 / -1; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-card { min-height: 116px; padding: 15px; }
+  .inline-stock-detail-inner { grid-template-columns: 1fr; padding: 10px; }
+  .inline-stock-detail-heading { align-items: flex-start; flex-direction: column; }
+  .inline-stock-metrics { padding: 0; gap: 6px; }
+  .inline-stock-metrics span { padding: 0 8px; font-size: 11px; }
   .metric-value { font-size: 26px; }
   .dashboard-grid { grid-template-columns: 1fr; }
   .trend-panel, .sector-panel { padding: 17px 16px 15px; }

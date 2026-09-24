@@ -41,6 +41,7 @@ const cryptoAssets = [
   { name: "XRP", symbol: "XRP", price: 2.18, prev: 2.24, change24: -2.31, change7: -0.86, volatility: 7.4, cap: 126, signal: "watch", support: 2.02, resistance: 2.36, history: [2.10, 2.18, 2.14, 2.28, 2.25, 2.31, 2.26, 2.22, 2.24, 2.18] },
   { name: "Dogecoin", symbol: "DOGE", price: 0.1842, prev: 0.1796, change24: 2.56, change7: 8.18, volatility: 8.9, cap: 27, signal: "bullish", support: 0.17, resistance: 0.21, history: [0.16, 0.165, 0.172, 0.169, 0.176, 0.181, 0.178, 0.182, 0.18, 0.184] }
 ];
+const accountCryptoSymbols = new Set(["BTC", "SOL", "ETH"]);
 
 const defaultHoldings = [
   { id: 1, name: "招商银行", code: "600036", marketKey: "600036", marketType: "stock", buyPrice: 38.20, quantity: 500, dividendPerUnit: 1.97 },
@@ -77,7 +78,8 @@ const state = {
   accountType: "stock",
   accountFormMarket: null,
   editingHoldingId: null,
-  dividendProgress: "all"
+  dividendProgress: "all",
+  expandedStockCode: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -95,8 +97,9 @@ let dividendRefreshInFlight = false;
 let dividendLastRefreshDate = "";
 let dividendUpdatedAt = new Date();
 const isFilePage = window.location.protocol === "file:";
-const marketApiBase = isFilePage ? "" : "/api/market";
-const dividendApiBase = isFilePage ? "" : "/api";
+const isLocalServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+const marketApiBase = isLocalServer ? "/api/market" : "";
+const dividendApiBase = isLocalServer ? "/api" : "";
 const trendPeriodConfig = {
   "1M": { months: 1, targetPoints: 22, labels: ["1个月前", "3周前", "2周前", "1周前", "现在"] },
   "3M": { months: 3, targetPoints: 44, labels: ["3个月前", "2个月前", "1个月前", "2周前", "现在"] },
@@ -105,6 +108,8 @@ const trendPeriodConfig = {
 };
 const trendCacheMaxAge = 5 * 60 * 1000;
 let trendHistoryRequestKey = "";
+let usdCnyRate = 7.2;
+let usdCnyRateUpdatedAt = null;
 
 function formatTime(date = new Date()) {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
@@ -112,6 +117,15 @@ function formatTime(date = new Date()) {
 
 function formatNumber(value, digits = 2) {
   return Number(value).toFixed(digits);
+}
+
+function normalizeDividendValue(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Number(numeric.toFixed(4)) : 0;
+}
+
+function formatBuyPrice(value) {
+  return formatNumber(value, 3);
 }
 
 function formatCryptoPrice(value) {
@@ -123,6 +137,40 @@ function formatCryptoPrice(value) {
 
 function formatAccountMoney(value, marketType = state.accountType) {
   return marketType === "crypto" ? formatCryptoPrice(value) : formatNumber(value, 2);
+}
+
+function formatAccountSummaryMoney(value, marketType = state.accountType, digits = 2) {
+  return marketType === "crypto"
+    ? formatCryptoPrice(value)
+    : formatNumber(Number(value || 0) / 10000, digits);
+}
+
+function formatCnyEquivalent(value) {
+  return formatNumber(Number(value || 0) * usdCnyRate, 2);
+}
+
+async function refreshUsdCnyRate() {
+  const endpoints = [
+    "https://api.frankfurter.app/latest?from=USD&to=CNY",
+    "https://open.er-api.com/v6/latest/USD"
+  ];
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(`${endpoint}${endpoint.includes("?") ? "&" : "?"}_=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      const rate = Number(payload?.rates?.CNY);
+      if (Number.isFinite(rate) && rate > 0) {
+        usdCnyRate = rate;
+        usdCnyRateUpdatedAt = new Date();
+        if (state.accountType === "crypto") renderAccountAll();
+        return rate;
+      }
+    } catch {
+      // Keep the last known rate and try the next provider.
+    }
+  }
+  return usdCnyRate;
 }
 
 function getBeijingDate(date = new Date()) {
@@ -360,6 +408,12 @@ function findMarketAsset(query) {
   return null;
 }
 
+function findAccountMarket(query) {
+  const market = findMarketAsset(query);
+  if (state.accountType !== "crypto" || !market || market.type !== "crypto") return market;
+  return accountCryptoSymbols.has(market.key) ? market : null;
+}
+
 function getHoldingMarket(holding) {
   if (holding.marketType === "stock") return stocks.find((item) => item.code === holding.marketKey) || null;
   if (holding.marketType === "crypto") return cryptoAssets.find((item) => item.symbol === holding.marketKey) || null;
@@ -382,19 +436,19 @@ function getAccountMeta() {
       title: "美元账户",
       currency: "美元",
       unit: "USD",
-      marketLabel: "虚拟币",
-      buyLabel: "买入价",
-      currentLabel: "当前价",
+      marketLabel: "美元 / BTC / SOL / ETH",
+      buyLabel: "单价",
+      currentLabel: "现价",
       quantityLabel: "数量",
-      buyHint: "按单价填写",
-      currentHint: "虚拟币每 10 分钟或手动刷新",
-      quantityHint: "按枚填写",
-      buyHeader: "买入价",
+      buyHint: "美元、BTC、SOL、ETH 按单价填写",
+      currentHint: "BTC、SOL、ETH 实时流更新，接口异常时轮询",
+      quantityHint: "美元、BTC、SOL、ETH 按单位填写",
+      buyHeader: "单价",
       totalHeader: "买入总价",
-      currentHeader: "当前价",
+      currentHeader: "现价",
       quantityHeader: "数量",
       profitRateHeader: "收益率",
-      tableNote: "收益 =（当前价 - 买入价）× 数量 · 单位：美元",
+      tableNote: "收益 =（当前价 - 买入价）× 数量 · 美元账户",
       isLive: true
     };
   }
@@ -403,19 +457,19 @@ function getAccountMeta() {
       title: "固定账户",
       currency: "人民币",
       unit: "CNY",
-      marketLabel: "定期 / 现金",
-      buyLabel: "录入金额",
+      marketLabel: "定期 / 现金 / 债券",
+      buyLabel: "单笔金额",
       currentLabel: "年化率",
       quantityLabel: "笔数",
-      buyHint: "定期或现金的初始金额",
+      buyHint: "定期、现金或债券的单笔金额",
       currentHint: "例如 2.50%",
       quantityHint: "通常填写 1",
-      buyHeader: "录入金额",
-      totalHeader: "总金额",
+      buyHeader: "单笔金额（w）",
+      totalHeader: "总金额（w）",
       currentHeader: "年化率",
       quantityHeader: "笔数",
       profitRateHeader: "收益率",
-      tableNote: "预计年收益 = 录入金额 × 年化率 × 笔数 · 单位：人民币",
+      tableNote: "预计年收益 = 单笔金额 × 年化率 × 笔数 · 金额单位：w",
       isLive: false
     };
   }
@@ -424,18 +478,18 @@ function getAccountMeta() {
     currency: "人民币",
     unit: "CNY",
     marketLabel: "红利股票",
-    buyLabel: "买入价",
+    buyLabel: "成本/股",
     currentLabel: "当前价",
     quantityLabel: "数量",
     buyHint: "按单价填写",
     currentHint: "股票每 5 秒自动刷新",
     quantityHint: "按股填写",
-      buyHeader: "买入价",
+      buyHeader: "成本/股",
       totalHeader: "买入总价",
       currentHeader: "当前价",
       quantityHeader: "数量",
       profitRateHeader: "收益率",
-    tableNote: "收益 =（当前价 - 买入价）× 数量 · 单位：人民币",
+    tableNote: "收益 =（当前价 - 成本/股）× 数量 · 金额单位：w",
     isLive: true
   };
 }
@@ -445,44 +499,131 @@ function setAccountType(type) {
   const meta = getAccountMeta();
   $("#accountView").classList.toggle("is-crypto-account", state.accountType === "crypto");
   $("#accountView").classList.toggle("is-fixed-account", state.accountType === "fixed");
+  $("#accountView").classList.toggle("is-stock-account", state.accountType === "stock");
   $$(".account-type-tab").forEach((tab) => {
     const active = tab.dataset.accountType === state.accountType;
     tab.classList.toggle("is-active", active);
     tab.setAttribute("aria-selected", String(active));
   });
-  $("#accountViewTitle").textContent = meta.title;
-  $("#accountFormScope").textContent = `当前录入：${meta.title}`;
-  $("#accountTableNote").textContent = meta.tableNote;
+  const accountViewTitle = $("#accountViewTitle");
+  if (accountViewTitle) accountViewTitle.textContent = meta.title;
+  const accountTableNote = $("#accountTableNote");
+  if (accountTableNote) accountTableNote.textContent = meta.tableNote;
   $("#accountBuyPriceLabel").textContent = meta.buyLabel;
   $("#accountCurrentPriceLabel").textContent = meta.currentLabel;
   $("#accountQuantityLabel").textContent = meta.quantityLabel;
   $("#accountBuyPriceHint").textContent = meta.buyHint;
   $("#accountCurrentPriceHint").textContent = meta.currentHint;
   $("#accountQuantityHint").textContent = meta.quantityHint;
-  $("#accountBuyPriceHeader").textContent = meta.buyHeader;
-  $("#accountTotalHeader").textContent = meta.totalHeader;
-  $("#accountCurrentPriceHeader").textContent = meta.currentHeader;
-  $("#accountQuantityHeader").textContent = meta.quantityHeader;
-  $("#accountProfitRateHeader").textContent = meta.profitRateHeader;
+  ["accountBuyPriceHeader", "accountTotalHeader", "accountCurrentPriceHeader", "accountQuantityHeader", "accountProfitRateHeader"].forEach((id) => {
+    const element = $(`#${id}`);
+    if (element) {
+      const labelMap = {
+        accountBuyPriceHeader: meta.buyHeader,
+        accountTotalHeader: meta.totalHeader,
+        accountCurrentPriceHeader: meta.currentHeader,
+        accountQuantityHeader: meta.quantityHeader,
+        accountProfitRateHeader: meta.profitRateHeader
+      };
+      element.textContent = labelMap[id];
+    }
+  });
+  renderAccountHeaders();
   $("#accountCurrentPriceInput").readOnly = state.accountType !== "fixed";
   $("#accountCurrentPriceInput").placeholder = state.accountType === "fixed" ? "0.00%" : "自动获取";
   $("#accountCurrentPriceInput").step = state.accountType === "fixed" ? "0.01" : "0.0001";
+  $("#accountBuyPriceInput").step = "0.001";
   $("#accountDataSource").textContent = meta.isLive ? "当前价自动刷新" : "固定账户手动维护";
-  $("#accountMetricValueLabel").textContent = state.accountType === "fixed" ? "资产金额" : "持仓市值";
-  $("#accountMetricValueMeta").textContent = state.accountType === "fixed" ? "录入金额 × 笔数" : "当前行情估值";
-  $("#accountMetricCostLabel").textContent = state.accountType === "fixed" ? "录入金额" : "投入成本";
-  $("#accountMetricCostMeta").textContent = state.accountType === "fixed" ? "定期 / 现金本金" : "买入价 × 数量";
-  $("#accountMetricProfitLabel").textContent = state.accountType === "fixed" ? "预计年收益" : "累计收益";
+  $("#accountMetricValueLabel").textContent = state.accountType === "fixed" ? "总金额" : "持仓市值";
+  $("#accountMetricValueMeta").textContent = state.accountType === "fixed" ? "单笔金额 × 笔数" : "当前行情估值";
+  $("#accountMetricCostLabel").textContent = state.accountType === "fixed" ? "每年收益" : "投入成本";
+  $("#accountMetricCostMeta").textContent = state.accountType === "fixed" ? "按年化率估算" : "买入价 × 数量";
+  $("#accountMetricProfitLabel").textContent = state.accountType === "fixed" ? "平均年化" : "累计收益";
+  $("#accountMetricProfitMeta").textContent = state.accountType === "fixed"
+    ? "按本金加权"
+    : "收益率";
   $("#accountMetricDividendLabel").textContent = state.accountType === "fixed" ? "每年收益" : "预计年度分红";
   ["accountCurrencyValue", "accountCurrencyCost", "accountCurrencyDividend"].forEach((id) => {
     const element = $(`#${id}`);
-    if (element) element.textContent = meta.currency;
+    if (element) element.textContent = state.accountType === "fixed"
+      ? "w"
+      : meta.unit === "CNY" ? "w" : meta.currency;
   });
+  const profitCurrency = $("#accountCurrencyProfit");
+  if (profitCurrency) {
+    profitCurrency.textContent = state.accountType === "fixed"
+      ? "%"
+      : state.accountType === "stock"
+      ? ""
+      : meta.unit === "CNY" ? "w" : meta.currency;
+  }
+  const exchangeCard = $("#accountExchangeMetric");
+  const equivalentCard = $("#accountEquivalentMetric");
+  if (exchangeCard) exchangeCard.classList.toggle("is-visible", state.accountType === "crypto");
+  if (equivalentCard) equivalentCard.classList.toggle("is-visible", state.accountType === "crypto");
   if (state.editingHoldingId != null) resetAccountForm();
   if (state.accountType === "fixed" && !$("#accountQuantityInput").value) {
     $("#accountQuantityInput").value = "1";
   }
+  // Recalculate after the account type and all display states have changed.
   renderAccountAll();
+}
+
+function renderAccountHeaders() {
+  const header = $(".account-table thead tr");
+  if (!header) return;
+  if (state.accountType === "fixed") {
+    header.innerHTML = `
+      <th>标的</th>
+      <th id="accountBuyPriceHeader">${getAccountMeta().buyHeader}</th>
+      <th id="accountQuantityHeader">${getAccountMeta().quantityHeader}</th>
+      <th id="accountTotalHeader">${getAccountMeta().totalHeader}</th>
+      <th id="accountCurrentPriceHeader">${getAccountMeta().currentHeader}</th>
+      <th>收益（w）</th>
+      <th>备注</th>
+      <th>操作</th>`;
+    return;
+  }
+  if (state.accountType === "stock") {
+    header.innerHTML = `
+      <th>标的</th>
+      <th id="accountBuyPriceHeader">${getAccountMeta().buyHeader}</th>
+      <th id="accountQuantityHeader">${getAccountMeta().quantityHeader}</th>
+      <th id="accountTotalHeader">${getAccountMeta().totalHeader}</th>
+      <th id="accountCurrentPriceHeader">${getAccountMeta().currentHeader}</th>
+      <th id="accountProfitRateHeader">${getAccountMeta().profitRateHeader}</th>
+      <th>收益</th>
+      <th class="account-dividend-only">当前股息率</th>
+      <th class="account-dividend-only">每年分红</th>
+      <th>备注</th>
+      <th>操作</th>`;
+    return;
+  }
+  if (state.accountType === "crypto") {
+    header.innerHTML = `
+      <th>标的</th>
+      <th id="accountBuyPriceHeader">${getAccountMeta().buyHeader}</th>
+      <th id="accountQuantityHeader">${getAccountMeta().quantityHeader}</th>
+      <th id="accountTotalHeader">${getAccountMeta().totalHeader}</th>
+      <th id="accountCurrentPriceHeader">${getAccountMeta().currentHeader}</th>
+      <th id="accountProfitRateHeader">${getAccountMeta().profitRateHeader}</th>
+      <th>收益</th>
+      <th>备注</th>
+      <th>操作</th>`;
+    return;
+  }
+  header.innerHTML = `
+    <th>标的</th>
+    <th id="accountBuyPriceHeader">${getAccountMeta().buyHeader}</th>
+    <th id="accountTotalHeader">${getAccountMeta().totalHeader}</th>
+    <th id="accountCurrentPriceHeader">${getAccountMeta().currentHeader}</th>
+    <th id="accountQuantityHeader">${getAccountMeta().quantityHeader}</th>
+    <th id="accountProfitRateHeader">${getAccountMeta().profitRateHeader}</th>
+    <th>收益</th>
+    <th class="account-dividend-only">当前股息率</th>
+    <th class="account-dividend-only">每年分红</th>
+    <th>备注</th>
+    <th>操作</th>`;
 }
 
 function getStockCurrentYield(stock) {
@@ -550,6 +691,7 @@ async function loadStockQuotes() {
   const codes = [...new Set(stocks.map((stock) => stock.code))];
   const query = codes.map((code) => `${stockMarketPrefix(code)}${code}`).join(",");
   const url = `https://qt.gtimg.cn/q=${query}&_=${Date.now()}`;
+  let proxyError = null;
   if (marketApiBase) {
     try {
       const proxyResponse = await fetch(`${marketApiBase}/stocks?symbols=${codes.join(",")}&_=${Date.now()}`, { cache: "no-store" });
@@ -557,10 +699,36 @@ async function loadStockQuotes() {
         const proxyQuotes = await proxyResponse.json();
         if (Object.keys(proxyQuotes).length) return proxyQuotes;
       }
-    } catch {
-      throw new Error("stock proxy unavailable");
+      proxyError = new Error(`stock proxy HTTP ${proxyResponse.status}`);
+    } catch (error) {
+      proxyError = error;
     }
-    if (marketApiBase) throw new Error("stock proxy returned no quotes");
+  }
+  try {
+    const secids = codes.map((code) => `${stockMarketPrefix(code) === "sh" ? "1" : "0"}.${code}`).join(",");
+    const eastmoneyResponse = await fetch(
+      `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f12,f14,f18&secids=${secids}&_=${Date.now()}`,
+      { cache: "no-store" }
+    );
+    if (eastmoneyResponse.ok) {
+      const payload = await eastmoneyResponse.json();
+      const eastmoneyQuotes = {};
+      (Array.isArray(payload?.data?.diff) ? payload.data.diff : []).forEach((row) => {
+        const code = String(row.f12 || "");
+        const price = Number(row.f2);
+        const previousClose = Number(row.f18);
+        if (code && Number.isFinite(price) && price > 0) {
+          eastmoneyQuotes[code] = {
+            name: row.f14,
+            price,
+            previousClose: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price
+          };
+        }
+      });
+      if (Object.keys(eastmoneyQuotes).length) return eastmoneyQuotes;
+    }
+  } catch {
+    // Continue to Tencent JSONP as the final browser-safe fallback.
   }
   try {
     const response = await fetch(url, { cache: "no-store" });
@@ -602,6 +770,8 @@ async function loadStockQuotes() {
         reject(new Error("stock quote script error"));
       };
       document.head.appendChild(script);
+    }).catch((error) => {
+      throw error || proxyError || new Error("stock quote unavailable");
     });
   }
 }
@@ -618,7 +788,9 @@ function applyStockQuotes(quotes) {
       : stock.yieldNew;
     stock.history.push(stock.price);
     if (stock.history.length > 30) stock.history.shift();
-    stock.drawdown = Math.max(0, ((stock.price - stock.first) / stock.price) * -100);
+    stock.drawdown = stock.price > 0 && stock.price > stock.first
+      ? (stock.price - stock.first) / stock.price * 100
+      : 0;
     updated += 1;
   });
   return updated;
@@ -710,9 +882,15 @@ async function refreshTrendHistory({ force = false } = {}) {
       ...(stock.trendHistory || {}),
       [period]: { points, fetchedAt: Date.now() }
     };
-    if (state.selectedCode === stock.code && state.period === period) renderTrendChart();
+    if (state.selectedCode === stock.code && state.period === period) {
+      renderTrendChart();
+      if (state.expandedStockCode === stock.code) renderTable();
+    }
   } catch {
-    if (state.selectedCode === stock.code && state.period === period) renderTrendChart();
+    if (state.selectedCode === stock.code && state.period === period) {
+      renderTrendChart();
+      if (state.expandedStockCode === stock.code) renderTable();
+    }
   } finally {
     if (trendHistoryRequestKey === requestKey) trendHistoryRequestKey = "";
   }
@@ -949,8 +1127,10 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
   if (liveRefreshInFlight || (!state.live && !manual)) return;
   liveRefreshInFlight = true;
   let stockUpdated = false;
-  const shouldRefreshCrypto = refreshCrypto || cryptoDataMode === "websocket";
-  let cryptoUpdated = cryptoDataMode === "websocket";
+  // WebSocket is an acceleration path; scheduled/manual polling must still run
+  // so a connected-but-silent stream cannot leave prices stale.
+  const shouldRefreshCrypto = refreshCrypto;
+  let cryptoUpdated = false;
   const stockTask = loadStockQuotes()
     .then((quotes) => {
       stockUpdated = applyStockQuotes(quotes) > 0;
@@ -993,9 +1173,7 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
       cryptoDataMode === "websocket" ? "加密市场实时在线" : cryptoDataMode === "live" ? "加密行情已同步" : "实时接口不可用",
       cryptoDataMode === "live" || cryptoDataMode === "websocket" ? "live" : "warning"
     );
-    if (cryptoDataMode === "live") $("#cryptoDataSource").textContent = marketApiBase
-      ? "多源行情 · 每 10 分钟轮询，可手动刷新"
-      : "多源行情 · 每 10 分钟轮询，可手动刷新";
+    if (cryptoDataMode === "live") $("#cryptoDataSource").textContent = "WebSocket 实时 · 多源轮询兜底";
   }
   $("#stockDataSource").textContent = stockDataMode === "live"
     ? "东方财富 / 腾讯行情 · 实时轮询"
@@ -1018,6 +1196,15 @@ function getVisibleStocks() {
       return matchesQuery && matchesSector && matchesWhitelist;
     })
     .sort((a, b) => {
+      const priceA = Number(a.price) || 0;
+      const priceB = Number(b.price) || 0;
+      const firstA = Number(a.first) || 0;
+      const firstB = Number(b.first) || 0;
+      const addA = Number(a.add) || 0;
+      const addB = Number(b.add) || 0;
+      const triggerRankA = priceA <= addA ? 2 : priceA <= firstA ? 1 : 0;
+      const triggerRankB = priceB <= addB ? 2 : priceB <= firstB ? 1 : 0;
+      if (triggerRankA !== triggerRankB) return triggerRankB - triggerRankA;
       const key = state.sortKey;
       const valueA = key === "name" ? a.name : a[key];
       const valueB = key === "name" ? b.name : b[key];
@@ -1030,8 +1217,11 @@ function renderOptions() {
   const sectors = [...new Set(stocks.map((stock) => stock.sector))];
   $("#sectorFilter").insertAdjacentHTML("beforeend", sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join(""));
   const trendStocks = stocks;
-  $("#trendStockSelect").innerHTML = trendStocks.map((stock) => `<option value="${stock.code}">${stock.name} · ${stock.code}</option>`).join("");
-  $("#trendStockSelect").value = state.selectedCode;
+  const trendSelect = $("#trendStockSelect");
+  if (trendSelect) {
+    trendSelect.innerHTML = trendStocks.map((stock) => `<option value="${stock.code}">${stock.name} · ${stock.code}</option>`).join("");
+    trendSelect.value = state.selectedCode;
+  }
   $("#cryptoSelect").innerHTML = cryptoAssets.map((asset) => `<option value="${asset.symbol}">${asset.symbol} · ${asset.name}</option>`).join("");
   $("#cryptoSelect").value = state.cryptoSymbol;
 }
@@ -1057,6 +1247,7 @@ function renderMetrics() {
 }
 
 function renderTrendChart() {
+  if (!$("#trendChart")) return;
   const stock = stocks.find((item) => item.code === state.selectedCode) || stocks[0];
   const trend = getTrendPoints(stock, state.period);
   const safePoints = trend.points.length > 1 ? trend.points : [{ close: stock.price }, { close: stock.price }];
@@ -1097,6 +1288,7 @@ function renderTrendChart() {
 }
 
 function renderSectorChart() {
+  if (!$("#sectorChart")) return;
   const source = state.whitelist ? stocks.filter((stock) => stock.whitelist) : stocks;
   const counts = source.reduce((acc, stock) => {
     acc[stock.sector] = (acc[stock.sector] || 0) + 1;
@@ -1122,21 +1314,86 @@ function renderTable() {
   $("#opportunityTableBody").innerHTML = visible.length ? visible.map((stock) => {
     const currentYield = getStockCurrentYield(stock);
     const currentPrice = Number(stock.price);
+    const firstPrice = Number(stock.first);
+    const requiredDrawdown = currentPrice > 0 && currentPrice > firstPrice
+      ? (currentPrice - firstPrice) / currentPrice * 100
+      : 0;
+    stock.drawdown = requiredDrawdown;
     const firstTriggered = currentPrice <= Number(stock.first) && currentYield >= Number(stock.firstYield);
     const addTriggered = currentPrice <= Number(stock.add) && currentYield >= Number(stock.addYield);
     const heavyTriggered = currentPrice <= Number(stock.heavy) && currentYield >= Number(stock.heavyYield);
+    const isExpanded = stock.code === state.expandedStockCode;
     return `
       <tr data-code="${stock.code}" class="${stock.code === state.selectedCode ? "is-selected" : ""}">
         <td><span class="stock-name">${stock.name}</span><span class="stock-code">${stock.code} · <span class="stock-sector">${stock.sector} / ${stock.sub}</span></span></td>
         <td class="price-cell">${formatNumber(stock.price)}</td>
         <td><div class="yield-stack"><span>新 ${formatNumber(getStockCurrentYield(stock))}%</span><span>均 ${formatNumber(stock.yieldAvg)}%</span><span>低 ${formatNumber(stock.yieldLow)}%</span></div></td>
         <td class="years-cell">${stock.years} 年</td>
-        <td class="drawdown-cell">${formatNumber(stock.drawdown)}%</td>
+        <td class="drawdown-cell">${formatNumber(requiredDrawdown)}%</td>
         <td><div class="target-cell${firstTriggered ? " is-triggered" : ""}"><strong>${formatNumber(stock.first)}</strong><span>${formatNumber(stock.firstYield, 1)}%</span></div></td>
         <td><div class="target-cell add${addTriggered ? " is-triggered" : ""}"><strong>${formatNumber(stock.add)}</strong><span>${formatNumber(stock.addYield, 1)}%</span></div></td>
         <td><div class="target-cell heavy${heavyTriggered ? " is-triggered" : ""}"><strong>${formatNumber(stock.heavy)}</strong><span>${formatNumber(stock.heavyYield, 1)}%</span></div></td>
-      </tr>`;
+      </tr>
+      ${isExpanded ? renderInlineStockDetail(stock) : ""}`;
   }).join("") : `<tr><td class="empty-state" colspan="8">没有符合条件的标的，试试切换行业或关闭“仅白名单”。</td></tr>`;
+}
+
+function renderInlineStockDetail(stock) {
+  const trend = getTrendPoints(stock, state.period);
+  const points = trend.points.length > 1 ? trend.points : [{ close: stock.price }, { close: stock.price }];
+  const values = points.map((point) => Number(point.close) || Number(stock.price) || 0);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(max - min, max * 0.01);
+  const width = 860;
+  const height = 190;
+  const pad = { top: 16, right: 16, bottom: 20, left: 38 };
+  const x = (index) => pad.left + index * ((width - pad.left - pad.right) / Math.max(values.length - 1, 1));
+  const y = (value) => pad.top + (max - value) / range * (height - pad.top - pad.bottom);
+  const pricePoints = values.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+  const areaPoints = `${pad.left},${height - pad.bottom} ${pricePoints} ${x(values.length - 1)},${height - pad.bottom}`;
+  const dividendPerShare = Number(stock.dividendPerShare) || 0;
+  const yieldValues = values.map((value) => value > 0 ? dividendPerShare / value * 100 : 0);
+  const yieldMin = Math.min(...yieldValues);
+  const yieldMax = Math.max(...yieldValues);
+  const yieldRange = Math.max(yieldMax - yieldMin, 0.2);
+  const yieldY = (value) => pad.top + (yieldMax - value) / yieldRange * (height - pad.top - pad.bottom);
+  const yieldPoints = yieldValues.map((value, index) => `${x(index)},${yieldY(value)}`).join(" ");
+  const yLabels = [max, min].map((value) => `<text class="chart-label" x="0" y="${y(value) + 3}">${formatNumber(value)}</text>`).join("");
+  const grid = [pad.top, height / 2, height - pad.bottom].map((lineY) => `<line class="grid-line" x1="${pad.left}" y1="${lineY}" x2="${width - pad.right}" y2="${lineY}"></line>`).join("");
+  return `
+    <tr class="inline-stock-detail">
+      <td colspan="8">
+        <div class="inline-stock-detail-inner">
+          <div class="inline-stock-detail-heading">
+            <div>
+              <strong>${escapeHtml(stock.name)} · ${stock.code}</strong>
+              <span>价格与息率趋势 · ${state.period} · ${trend.source}</span>
+            </div>
+            <div class="inline-period-tabs">
+              ${["1M", "3M", "1Y", "3Y"].map((period) => `<button type="button" class="${period === state.period ? "is-active" : ""}" data-inline-period="${period}" data-inline-code="${stock.code}">${period}</button>`).join("")}
+            </div>
+          </div>
+          <div class="inline-stock-chart">
+            <div class="inline-chart-legend"><span><i class="legend-line legend-price"></i>最新价</span><span><i class="legend-line legend-yield"></i>股息率</span></div>
+            <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(stock.name)}价格与息率趋势图">
+              ${grid}${yLabels}
+              <polygon class="price-area" points="${areaPoints}"></polygon>
+              <polyline class="price-line" points="${pricePoints}"></polyline>
+              <polyline class="yield-line" points="${yieldPoints}"></polyline>
+              <circle class="chart-dot" cx="${x(values.length - 1)}" cy="${y(values[values.length - 1])}" r="4"></circle>
+            </svg>
+          </div>
+          <div class="inline-stock-metrics">
+            <span><b>当前股息率</b>${formatNumber(getStockCurrentYield(stock))}%</span>
+            <span><b>首仓价</b>${formatNumber(stock.first)}</span>
+            <span><b>加仓价</b>${formatNumber(stock.add)}</span>
+            <span><b>重仓价</b>${formatNumber(stock.heavy)}</span>
+            <span><b>连续分红</b>${stock.years} 年</span>
+          </div>
+        </div>
+      </td>
+    </tr>`;
 }
 
 function renderCryptoMetrics() {
@@ -1257,46 +1514,72 @@ function renderAccountMetrics() {
   const profitRate = summary.cost ? summary.profit / summary.cost * 100 : 0;
   const dividendYield = summary.cost ? summary.dividend / summary.cost * 100 : 0;
   const profitClass = summary.profit >= 0 ? "positive" : "alert";
-  $("#accountMetricValue").textContent = formatNumber(summary.marketValue, 2);
-  $("#accountMetricCost").textContent = formatNumber(summary.cost, 2);
-  $("#accountMetricProfit").textContent = `${summary.profit >= 0 ? "+" : ""}${formatNumber(summary.profit, 2)}`;
+  $("#accountMetricValue").textContent = formatAccountSummaryMoney(summary.marketValue);
+  $("#accountMetricCost").textContent = formatAccountSummaryMoney(
+    state.accountType === "fixed" ? summary.profit : summary.cost
+  );
+  $("#accountMetricProfit").textContent = state.accountType === "fixed"
+    ? `${formatNumber(profitRate, 2)}`
+    : state.accountType === "stock"
+      ? `${summary.profit >= 0 ? "+" : ""}${formatAccountMoney(summary.profit)}`
+      : `${summary.profit >= 0 ? "+" : ""}${formatAccountMoney(summary.profit, state.accountType)}`;
   $("#accountMetricProfit").className = `metric-value ${profitClass}`;
   $("#accountMetricProfitMeta").textContent = state.accountType === "fixed"
-    ? `加权年化率 ${formatNumber(profitRate, 2)}%`
+    ? "按本金加权"
     : `收益率 ${profitRate >= 0 ? "+" : ""}${formatNumber(profitRate, 2)}%`;
   $("#accountMetricProfitMeta").className = `metric-meta ${profitClass}`;
-  $("#accountMetricDividend").textContent = formatNumber(
+  $("#accountMetricDividend").textContent = formatAccountSummaryMoney(
     state.accountType === "fixed" ? summary.profit : summary.dividend,
-    2
   );
+  if (state.accountType === "crypto") {
+    $("#accountExchangeRate").textContent = formatNumber(usdCnyRate, 4);
+    $("#accountExchangeMeta").textContent = usdCnyRateUpdatedAt
+      ? `更新 ${formatTime(usdCnyRateUpdatedAt)}`
+      : "实时汇率";
+    $("#accountEquivalentValue").textContent = formatCnyEquivalent(summary.marketValue);
+    $("#accountEquivalentCost").textContent = formatCnyEquivalent(summary.cost);
+    $("#accountEquivalentProfit").textContent = `${summary.profit >= 0 ? "+" : ""}${formatCnyEquivalent(summary.profit)}`;
+  }
   $("#accountMetricYieldMeta").textContent = state.accountType === "fixed"
     ? `年化率 ${formatNumber(profitRate, 2)}%`
     : `持仓股息率 ${formatNumber(dividendYield, 2)}%`;
-  $("#accountTableSummary").textContent = `共 ${getAccountHoldings().length} 笔持仓`;
+  const accountTableSummary = $("#accountTableSummary");
+  if (accountTableSummary) accountTableSummary.textContent = `共 ${getAccountHoldings().length} 笔持仓`;
   $("#accountLastUpdated").textContent = formatTime();
 }
 
 function renderAccountTable() {
   const accountHoldings = getAccountHoldings();
+  const isFixed = state.accountType === "fixed";
   const summary = getAccountSummary();
   const summaryProfitRate = summary.cost ? summary.profit / summary.cost * 100 : 0;
   const summaryYield = summary.cost ? summary.dividend / summary.cost * 100 : 0;
   const summaryProfitClass = summary.profit >= 0 ? "positive-value" : "negative-value";
   const summaryRow = `
       <tr class="account-summary-row">
-        <td><strong>持仓汇总</strong><span class="stock-code">${accountHoldings.length} 笔持仓</span></td>
-        <td>—</td>
-        <td class="account-summary-number">${formatAccountMoney(summary.cost)}</td>
-        <td class="account-summary-number">${state.accountType === "fixed" ? `${formatNumber(summaryProfitRate)}%` : `<strong>${formatAccountMoney(summary.marketValue)}</strong><span class="stock-code">当前市值</span>`}</td>
-        <td>—</td>
-        <td class="${summaryProfitClass}">${state.accountType === "fixed" ? "—" : `${summaryProfitRate >= 0 ? "+" : ""}${formatNumber(summaryProfitRate)}%`}</td>
-        <td class="${summaryProfitClass}">${summary.profit >= 0 ? "+" : ""}${formatAccountMoney(summary.profit)}</td>
-        <td class="account-dividend-only">${formatNumber(summaryYield)}%</td>
-        <td class="account-dividend-only dividend-value">${formatAccountMoney(summary.dividend)}</td>
-        <td>—</td>
-        <td>—</td>
+        <td><strong>持仓汇总</strong>${isFixed ? "" : `<span class="stock-code">${accountHoldings.length} 笔持仓</span>`}</td>
+        ${isFixed ? `
+          <td class="account-summary-number">${formatAccountSummaryMoney(summary.cost)}</td>
+          <td>${accountHoldings.reduce((sum, holding) => sum + (Number(holding.quantity) || 0), 0)}</td>
+          <td class="account-summary-number">${formatAccountSummaryMoney(summary.marketValue)}</td>
+          <td class="account-summary-number">${formatNumber(summaryProfitRate)}%</td>
+          <td class="${summaryProfitClass}">${summary.profit >= 0 ? "+" : ""}${formatAccountSummaryMoney(summary.profit)}</td>
+          <td>—</td>
+          <td>—</td>` : `
+          <td>—</td>
+          <td class="account-summary-number">${state.accountType === "stock" ? formatAccountMoney(summary.cost) : formatAccountSummaryMoney(summary.cost)}</td>
+          <td class="account-summary-number"><strong>${formatAccountSummaryMoney(summary.marketValue)}</strong></td>
+          <td>—</td>
+          <td class="${summaryProfitClass}">${summaryProfitRate >= 0 ? "+" : ""}${formatNumber(summaryProfitRate)}%</td>
+          <td class="${summaryProfitClass}">${summary.profit >= 0 ? "+" : ""}${state.accountType === "stock" ? formatAccountMoney(summary.profit) : formatAccountSummaryMoney(summary.profit)}</td>
+          ${state.accountType === "stock" ? `
+          <td class="account-dividend-only">${formatNumber(summaryYield)}%</td>
+          <td class="account-dividend-only dividend-value">${formatAccountMoney(summary.dividend)}</td>` : ""}
+          <td>—</td>
+          <td>—</td>`}
       </tr>`;
-  $("#accountTableBody").innerHTML = accountHoldings.length ? summaryRow + accountHoldings.map((holding) => {
+  const tablePrefix = state.accountType === "stock" ? "" : summaryRow;
+  $("#accountTableBody").innerHTML = accountHoldings.length ? tablePrefix + accountHoldings.map((holding) => {
     const currentPrice = getHoldingCurrentPrice(holding);
     const buyPrice = Number(holding.buyPrice) || 0;
     const quantity = Number(holding.quantity) || 0;
@@ -1314,16 +1597,29 @@ function renderAccountTable() {
     const codeLabel = holding.code || holding.marketKey || "自定义";
     return `
       <tr data-holding-id="${holding.id}">
-        <td><span class="stock-name">${escapeHtml(holding.name)}</span><span class="stock-code">${escapeHtml(codeLabel)} · ${holding.marketType === "crypto" ? "虚拟币" : holding.marketType === "fixed" ? "固定资产" : "股票"}</span></td>
-        <td>${formatAccountMoney(buyPrice, holding.marketType)}</td>
-        <td class="account-summary-number">${formatAccountMoney(cost, holding.marketType)}</td>
-        <td class="${holding.marketType === "fixed" ? "positive-value" : currentPrice >= holding.buyPrice ? "positive-value" : "negative-value"}">${holding.marketType === "fixed" ? `${formatNumber(annualRate)}%` : formatAccountMoney(currentPrice, holding.marketType)}</td>
-        <td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 4)}</td>
-        <td class="${profitClass}">${holding.marketType === "fixed" ? "—" : `${profitRate >= 0 ? "+" : ""}${formatNumber(profitRate)}%`}</td>
-        <td class="${profitClass}">${profit >= 0 ? "+" : ""}${formatAccountMoney(profit, holding.marketType)}</td>
-        <td class="account-dividend-only">${formatNumber(currentYield)}%</td>
-        <td class="account-dividend-only dividend-value">${formatAccountMoney(dividend, holding.marketType)}</td>
-        <td class="account-note-cell">${escapeHtml(holding.note || "—")}</td>
+        <td><span class="stock-name">${escapeHtml(holding.name)}</span>${isFixed ? "" : `<span class="stock-code">${escapeHtml(codeLabel)}${holding.marketType === "crypto" ? " · 虚拟币" : ""}</span>`}</td>
+        ${isFixed ? `
+          <td>${formatAccountSummaryMoney(buyPrice, holding.marketType)}</td>
+          <td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 4)}</td>
+          <td class="account-summary-number">${formatAccountSummaryMoney(cost, holding.marketType)}</td>
+          <td class="positive-value">${formatNumber(annualRate)}%</td>
+          <td class="${profitClass}">${profit >= 0 ? "+" : ""}${formatAccountSummaryMoney(profit, holding.marketType)}</td>
+          <td class="account-note-cell">${escapeHtml(holding.note || "—")}</td>` : `
+          ${state.accountType === "stock" ? `
+          <td>${formatBuyPrice(buyPrice)}</td>
+          <td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 4)}</td>
+          <td class="account-summary-number">${formatAccountMoney(cost, holding.marketType)}</td>` : `
+          <td>${formatBuyPrice(buyPrice)}</td>
+          ${state.accountType === "crypto" ? `<td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 6)}</td>` : ""}
+          <td class="account-summary-number">${formatAccountMoney(cost, holding.marketType)}</td>`}
+          <td class="${currentPrice >= holding.buyPrice ? "positive-value" : "negative-value"}">${formatAccountMoney(currentPrice, holding.marketType)}</td>
+          ${state.accountType === "stock" ? "" : state.accountType === "crypto" ? "" : `<td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 4)}</td>`}
+          <td class="${profitClass}">${profitRate >= 0 ? "+" : ""}${formatNumber(profitRate)}%</td>
+          <td class="${profitClass}">${profit >= 0 ? "+" : ""}${holding.marketType === "stock" ? formatAccountMoney(profit, holding.marketType) : formatAccountSummaryMoney(profit, holding.marketType)}</td>
+          ${state.accountType === "stock" ? `
+          <td class="account-dividend-only">${formatNumber(currentYield)}%</td>
+          <td class="account-dividend-only dividend-value">${formatAccountMoney(dividend, holding.marketType)}</td>` : ""}
+          <td class="account-note-cell">${escapeHtml(holding.note || "—")}</td>`}
         <td>
           <div class="account-action-buttons">
             <button class="account-action-button edit" type="button" data-edit-holding="${holding.id}" title="编辑持仓" aria-label="编辑持仓">✎</button>
@@ -1333,7 +1629,7 @@ function renderAccountTable() {
       </tr>`;
   }).join("") : `
     <tr>
-      <td colspan="11" class="account-empty-state">
+      <td colspan="${isFixed ? 8 : 11}" class="account-empty-state">
         <strong>还没有持仓</strong>
         <span>在上方填写标的、买入价和数量，即可开始跟踪。</span>
       </td>
@@ -1369,12 +1665,14 @@ function startEditingHolding(id) {
   if (!holding) return;
   state.editingHoldingId = id;
   $("#accountTargetInput").value = holding.code && !["custom", "fixed"].includes(holding.marketType) ? holding.code : holding.name;
-  $("#accountBuyPriceInput").value = String(holding.buyPrice);
+  $("#accountBuyPriceInput").value = formatBuyPrice(holding.buyPrice);
   $("#accountCurrentPriceInput").value = holding.marketType === "fixed"
     ? String(holding.annualRate || 0)
     : String(getHoldingCurrentPrice(holding));
   $("#accountQuantityInput").value = String(holding.quantity || 1);
-  $("#accountDividendInput").value = holding.dividendPerUnit > 0 ? String(holding.dividendPerUnit) : "";
+  $("#accountDividendInput").value = holding.dividendPerUnit > 0
+    ? formatNumber(normalizeDividendValue(holding.dividendPerUnit), 4)
+    : "";
   $("#accountNoteInput").value = holding.note || "";
   setAccountFormMode(true);
   updateAccountFormPreview();
@@ -1384,7 +1682,7 @@ function startEditingHolding(id) {
 
 function updateAccountFormPreview() {
   const target = $("#accountTargetInput").value;
-  const market = state.accountType === "fixed" ? null : findMarketAsset(target);
+  const market = state.accountType === "fixed" ? null : findAccountMarket(target);
   state.accountFormMarket = market;
   if (state.accountType === "fixed") {
     $("#accountCurrentPriceInput").placeholder = "0.00%";
@@ -1409,7 +1707,11 @@ function updateAccountFormPreview() {
   } else {
     $("#accountCurrentPriceInput").value = "";
     $("#accountYieldInput").value = "0.00%";
-    $("#accountMarketHint").textContent = target.trim() ? "未匹配内置行情，将按买入价暂存" : "输入后自动匹配行情";
+    $("#accountMarketHint").textContent = target.trim()
+      ? state.accountType === "crypto"
+        ? "可录入美元，或匹配 BTC / SOL / ETH 实时行情"
+        : "未匹配内置行情，将按买入价暂存"
+      : "输入后自动匹配行情";
     $("#accountMarketHint").className = target.trim() ? "form-hint-warning" : "";
     $("#accountDividendInput").placeholder = "可手动覆盖";
   }
@@ -1467,12 +1769,15 @@ function bindEvents() {
     refreshLiveMarketData({ manual: true });
     refreshDividendData({ force: true, manual: true });
   });
-  $("#trendStockSelect").addEventListener("change", (event) => {
-    state.selectedCode = event.target.value;
-    renderTrendChart();
-    refreshTrendHistory({ force: true });
-    renderTable();
-  });
+  const trendSelect = $("#trendStockSelect");
+  if (trendSelect) {
+    trendSelect.addEventListener("change", (event) => {
+      state.selectedCode = event.target.value;
+      renderTrendChart();
+      refreshTrendHistory({ force: true });
+      renderTable();
+    });
+  }
   $$(".period-tab").forEach((button) => button.addEventListener("click", () => {
     button.closest(".panel-controls").querySelectorAll(".period-tab").forEach((tab) => tab.classList.remove("is-active"));
     button.classList.add("is-active");
@@ -1494,10 +1799,27 @@ function bindEvents() {
     renderTable();
   }));
   $("#opportunityTableBody").addEventListener("click", (event) => {
+    const periodButton = event.target.closest("[data-inline-period]");
+    if (periodButton) {
+      state.period = periodButton.dataset.inlinePeriod;
+      state.selectedCode = periodButton.dataset.inlineCode || state.selectedCode;
+      const trendSelect = $("#trendStockSelect");
+      if (trendSelect) trendSelect.value = state.selectedCode;
+      $$(".period-tab").forEach((tab) => {
+        if (!tab.classList.contains("crypto-period-tab")) tab.classList.toggle("is-active", tab.dataset.period === state.period);
+      });
+      renderTrendChart();
+      refreshTrendHistory({ force: true });
+      renderTable();
+      return;
+    }
     const row = event.target.closest("tr[data-code]");
     if (!row) return;
-    state.selectedCode = row.dataset.code;
-    $("#trendStockSelect").value = state.selectedCode;
+    const nextCode = row.dataset.code;
+    state.expandedStockCode = state.expandedStockCode === nextCode ? null : nextCode;
+    state.selectedCode = nextCode;
+    const trendSelect = $("#trendStockSelect");
+    if (trendSelect) trendSelect.value = state.selectedCode;
     renderTrendChart();
     renderTable();
   });
@@ -1541,16 +1863,28 @@ function bindEvents() {
     refreshLiveMarketData({ manual: true });
   });
   $$(".account-type-tab").forEach((button) => button.addEventListener("click", () => {
+    $$(".nav-item").forEach((item) => item.classList.remove("is-active"));
+    $$(".account-type-tab").forEach((item) => {
+      item.classList.remove("is-active");
+      item.setAttribute("aria-selected", "false");
+    });
+    button.classList.add("is-active");
+    button.setAttribute("aria-selected", "true");
+    $("#overviewView").classList.remove("is-active");
+    $("#cryptoView").classList.remove("is-active");
+    $("#dividendView").classList.remove("is-active");
+    $("#accountView").classList.add("is-active");
     setAccountType(button.dataset.accountType);
   }));
   $("#accountForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const target = $("#accountTargetInput").value.trim();
-    const buyPrice = Number($("#accountBuyPriceInput").value);
+    const buyPriceInput = Number($("#accountBuyPriceInput").value);
+    const buyPrice = Number.isFinite(buyPriceInput) ? Number(buyPriceInput.toFixed(3)) : buyPriceInput;
     const quantity = Number($("#accountQuantityInput").value);
     const dividendInput = state.accountType === "stock" ? Number($("#accountDividendInput").value) : 0;
     const note = $("#accountNoteInput").value.trim();
-    const market = state.accountType === "fixed" ? null : state.accountFormMarket || findMarketAsset(target);
+    const market = state.accountType === "fixed" ? null : state.accountFormMarket || findAccountMarket(target);
     const currentPriceInput = Number($("#accountCurrentPriceInput").value);
     if (!target || !Number.isFinite(buyPrice) || buyPrice <= 0 || !Number.isFinite(quantity) || quantity <= 0) {
       showToast("请填写有效的标的、买入价和数量");
@@ -1575,7 +1909,7 @@ function bindEvents() {
       buyPrice,
       quantity,
       annualRate: state.accountType === "fixed" ? currentPriceInput : 0,
-      dividendPerUnit: dividendInput > 0 ? dividendInput : defaultDividend,
+      dividendPerUnit: dividendInput > 0 ? normalizeDividendValue(dividendInput) : normalizeDividendValue(defaultDividend),
       note
     };
     if (state.editingHoldingId == null) {
@@ -1619,6 +1953,10 @@ function bindEvents() {
   });
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => {
     $$(".nav-item").forEach((item) => item.classList.remove("is-active"));
+    $$(".account-type-tab").forEach((item) => {
+      item.classList.remove("is-active");
+      item.setAttribute("aria-selected", "false");
+    });
     button.classList.add("is-active");
     if (button.dataset.view === "crypto") {
       $("#overviewView").classList.remove("is-active");
@@ -1653,10 +1991,12 @@ updateAccountFormPreview();
 connectCryptoStream();
 refreshTrendHistory({ force: true });
 refreshLiveMarketData({ refreshCrypto: true });
+refreshUsdCnyRate();
 refreshDividendData();
 dividendLastRefreshDate = getBeijingDate();
 setInterval(() => { if (state.live) refreshLiveMarketData(); }, 5000);
-setInterval(() => { if (state.live) refreshLiveMarketData({ refreshCrypto: true }); }, 600000);
+setInterval(() => { if (state.live) refreshLiveMarketData({ refreshCrypto: true }); }, 60000);
+setInterval(() => { if (state.live) refreshUsdCnyRate(); }, 1800000);
 setInterval(() => {
   if (state.live && !["live", "websocket"].includes(cryptoDataMode)) {
     refreshLiveMarketData({ refreshCrypto: true });
