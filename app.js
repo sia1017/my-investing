@@ -2215,6 +2215,14 @@ refreshLiveMarketData({ refreshCrypto: true });
 refreshUsdCnyRate();
 refreshDividendData();
 loadRepositoryHoldings();
+
+if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
+      // PWA caching is optional; the live dashboard continues without it.
+    });
+  });
+}
 dividendLastRefreshDate = getBeijingDate();
 setInterval(() => { if (state.live) refreshLiveMarketData({ refreshCrypto: true }); }, 5000);
 setInterval(() => { if (state.live) refreshUsdCnyRate(); }, 1800000);
