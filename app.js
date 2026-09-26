@@ -455,7 +455,6 @@ function importHoldingsFile(file) {
 }
 
 async function loadRepositoryHoldings() {
-  if (holdingsStorageSource === "local") return;
   try {
     const response = await fetch(`./holdings.json?_=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) return;
