@@ -15,9 +15,9 @@
         </div>
 
         <nav class="main-nav" aria-label="主导航">
-          <button class="nav-item" data-view="overview">红利股票</button>
           <button class="nav-item" data-view="calendar">分红日历</button>
           <button class="nav-item" data-view="crypto">虚拟币</button>
+          <button class="nav-item" data-view="overview">红利股票</button>
           <div class="account-type-tabs" role="tablist" aria-label="账户类型">
             <button class="account-type-tab is-active" type="button" data-account-type="stock" role="tab" aria-selected="true">
               <span>股票账户</span><small>人民币 · 红利股票</small>
@@ -159,68 +159,6 @@
             </article>
           </section>
 
-          <section class="dashboard-grid">
-            <article class="panel trend-panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="panel-kicker">行情观察</p>
-                  <h2>价格与趋势线</h2>
-                </div>
-                <div class="panel-controls">
-                  <select id="cryptoSelect" aria-label="选择虚拟币"></select>
-                  <div class="period-tabs" role="tablist" aria-label="虚拟币趋势周期">
-                    <button class="period-tab crypto-period-tab" data-period="24H">24H</button>
-                    <button class="period-tab crypto-period-tab is-active" data-period="7D">7D</button>
-                    <button class="period-tab crypto-period-tab" data-period="30D">30D</button>
-                  </div>
-                </div>
-              </div>
-              <div class="chart-legend">
-                <span><i class="legend-line legend-price"></i>价格</span>
-                <span><i class="legend-line legend-yield"></i>EMA20</span>
-                <span class="chart-note" id="cryptoTrendSummary">BTC · Bitcoin</span>
-              </div>
-              <div class="trend-chart-wrap" id="cryptoTrendChart" aria-label="虚拟币价格趋势图"></div>
-              <div class="chart-axis" id="cryptoChartAxis"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>今天</span></div>
-            </article>
-
-            <article class="panel analysis-panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="panel-kicker">市场信号</p>
-                  <h2>多维度分析</h2>
-                </div>
-                <span class="panel-count">实时计算</span>
-              </div>
-              <div class="signal-list">
-                <div class="signal-row">
-                  <div><span class="signal-label">市场情绪</span><strong id="signalSentiment">偏多</strong></div>
-                  <div class="signal-track"><span id="signalSentimentBar" class="signal-fill signal-fill-green"></span></div>
-                  <span id="signalSentimentValue" class="signal-value">72</span>
-                </div>
-                <div class="signal-row">
-                  <div><span class="signal-label">趋势强度</span><strong id="signalTrend">强势</strong></div>
-                  <div class="signal-track"><span id="signalTrendBar" class="signal-fill signal-fill-blue"></span></div>
-                  <span id="signalTrendValue" class="signal-value">78</span>
-                </div>
-                <div class="signal-row">
-                  <div><span class="signal-label">波动风险</span><strong id="signalRisk">中等</strong></div>
-                  <div class="signal-track"><span id="signalRiskBar" class="signal-fill signal-fill-amber"></span></div>
-                  <span id="signalRiskValue" class="signal-value">46</span>
-                </div>
-                <div class="signal-row">
-                  <div><span class="signal-label">资金流向</span><strong id="signalFlow">净流入</strong></div>
-                  <div class="signal-track"><span id="signalFlowBar" class="signal-fill signal-fill-green"></span></div>
-                  <span id="signalFlowValue" class="signal-value">65</span>
-                </div>
-              </div>
-              <div class="analysis-summary">
-                <span class="summary-icon">↗</span>
-                <div><strong id="cryptoSummaryTitle">BTC 处于上升趋势</strong><span id="cryptoSummaryText">价格运行在短期均线之上，回踩支撑后仍有延续空间。</span></div>
-              </div>
-            </article>
-          </section>
-
           <section class="panel crypto-table-panel">
             <div class="panel-heading table-heading">
               <div>
@@ -338,29 +276,19 @@
                 <div class="metric-value"><span id="accountMetricDividend">0.00</span><small id="accountCurrencyDividend">人民币</small></div>
                 <div class="metric-meta alert" id="accountMetricYieldMeta">持仓股息率 0.00%</div>
               </article>
-              <article class="metric-card account-extra-metric" id="accountExchangeMetric">
-                <div class="metric-label">美元汇率</div>
-                <div class="metric-value"><span id="accountExchangeRate">7.2000</span><small>人民币 / 美元</small></div>
-                <div class="metric-meta neutral" id="accountExchangeMeta">实时汇率</div>
-              </article>
               <article class="metric-card account-extra-metric" id="accountEquivalentMetric">
                 <div class="metric-label">等价人民币</div>
                 <div class="metric-value"><span id="accountEquivalentValue">0.00</span><small>¥</small></div>
-                <div class="metric-meta neutral">市值等价 · <span id="accountEquivalentCost">0.00</span> 成本 · <span id="accountEquivalentProfit">0.00</span> 收益</div>
+                <div class="metric-meta neutral account-exchange-note">美元汇率：<span id="accountExchangeRate">7.2000</span><span id="accountExchangeMeta">实时汇率</span></div>
               </article>
             </div>
           </section>
 
           <section class="panel account-form-panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="panel-kicker">手动录入</p>
-                </div>
-              </div>
             <form class="account-form" id="accountForm">
               <label class="form-field">
                 <span>标的</span>
-                <input id="accountTargetInput" type="text" placeholder="名称 / 代码 / 币种代码" autocomplete="off" required />
+                <input id="accountTargetInput" type="text" placeholder="名称 / 代码" autocomplete="off" required />
                 <small id="accountMarketHint">输入后自动匹配行情</small>
               </label>
               <label class="form-field">
@@ -368,7 +296,7 @@
                 <input id="accountBuyPriceInput" type="number" min="0" step="0.001" placeholder="0.000" required />
                 <small id="accountBuyPriceHint">按单价填写</small>
               </label>
-              <label class="form-field">
+              <label class="form-field account-current-price-field">
                 <span id="accountCurrentPriceLabel">当前价</span>
                 <input id="accountCurrentPriceInput" type="number" min="0" step="0.01" placeholder="自动获取" readonly />
                 <small id="accountCurrentPriceHint">股票实时更新，虚拟币实时流与轮询兜底</small>
@@ -394,7 +322,10 @@
                 <small>记录策略、期限等信息</small>
               </label>
               <div class="account-form-actions">
-                <button class="primary-button" id="accountFormSubmit" type="submit"><span aria-hidden="true">＋</span> 添加持仓</button>
+                <div class="account-submit-group">
+                  <span class="account-form-kicker">手动录入</span>
+                  <button class="primary-button" id="accountFormSubmit" type="submit"><span aria-hidden="true">＋</span> 添加持仓</button>
+                </div>
                 <button class="secondary-button" id="accountResetButton" type="button">清空</button>
               </div>
             </form>

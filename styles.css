@@ -115,11 +115,11 @@ button { cursor: pointer; }
 .icon-button:hover { border-color: var(--green); color: var(--green); }
 .avatar-button { border-radius: 50%; background: #e8eee8; border: 0; color: var(--green); font-weight: 700; }
 
-.main-content { max-width: 1440px; margin: 0 auto; padding: 35px 32px 24px; }
+.main-content { max-width: 1440px; margin: 0 auto; padding: 18px 32px 24px; }
 .view-section { display: none; }
 .view-section.is-active { display: block; }
 .status-only-row { justify-content: flex-end; min-height: 34px; margin-bottom: 18px; }
-.hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin-bottom: 27px; }
+.hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin-bottom: 18px; }
 #overviewView > .metric-grid { gap: 10px; margin-bottom: 10px; }
 #overviewView > .metric-grid .metric-card { min-height: 96px; padding: 12px 14px; }
 #overviewView > .metric-grid .metric-value { margin: 7px 0 3px; font-size: 24px; }
@@ -181,15 +181,21 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .live-clock strong { grid-column: 2; color: var(--ink); font-size: 16px; font-weight: 700; letter-spacing: 0.02em; }
 .live-clock small { grid-column: 2; color: var(--muted-2); font-size: 9px; }
 .live-pulse { grid-row: 1 / 3; align-self: center; box-shadow: 0 0 0 4px var(--green-soft); }
-.crypto-hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin-bottom: 27px; }
-.account-hero-row { margin-bottom: 27px; }
-.dividend-hero-row { margin-bottom: 27px; }
+.crypto-hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin-bottom: 18px; }
+.account-hero-row { margin-bottom: 18px; }
+.dividend-hero-row { margin-bottom: 18px; }
 .account-summary-strip {
   display: grid;
   grid-template-columns: 176px minmax(0, 1fr);
   gap: 8px;
   align-items: stretch;
   margin-bottom: 10px;
+}
+#accountView.is-crypto-account .account-summary-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+#accountView.is-crypto-account .account-summary-strip > .account-metric-grid {
+  display: contents;
 }
 .account-type-tabs {
   display: flex;
@@ -252,6 +258,9 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .account-metric-grid .metric-meta { font-size: 9px; }
 .account-extra-metric { display: none; }
 .account-extra-metric.is-visible { display: block; }
+.account-exchange-note { font-size: 10px; line-height: 15px; }
+.account-exchange-note #accountExchangeRate { font-size: 10px; font-weight: 700; }
+.account-exchange-note #accountExchangeMeta { margin-left: 6px; color: var(--muted-2); font-size: 9px; }
 #accountView.is-crypto-account .account-metric-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 #accountView.is-fixed-account #accountDividendMetric { display: none; }
 #accountView.is-fixed-account .account-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -333,15 +342,27 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .account-form-panel { padding: 15px 18px 16px; margin-bottom: 10px; }
 #accountView.is-crypto-account .account-dividend-only { display: none; }
 #accountView.is-crypto-account .account-metric-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-#accountView.is-crypto-account .account-form,
-#accountView.is-fixed-account .account-form { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-#accountView.is-stock-account .account-form { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+#accountView.is-crypto-account .account-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(150px, 1.2fr);
+}
+#accountView.is-stock-account .account-form {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(150px, 1.2fr);
+}
+#accountView.is-stock-account .account-current-price-field,
+#accountView.is-crypto-account .account-current-price-field { display: none; }
 #accountView.is-fixed-account .account-dividend-only { display: none; }
 #accountView.is-fixed-account .account-annual-card { display: block; }
 #accountView.is-fixed-account .account-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#accountView.is-fixed-account .account-form .form-field small { display: none; }
-.account-form { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 14px; align-items: start; }
-.form-field { display: grid; gap: 4px; }
+#accountView.is-fixed-account .account-form .form-field small {
+  visibility: hidden;
+}
+.account-form { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(150px, 1.2fr); gap: 10px; margin-top: 14px; align-items: stretch; }
+.form-field {
+  display: grid;
+  grid-template-rows: 15px 34px 13px;
+  gap: 4px;
+  min-width: 0;
+}
 .form-field > span { color: var(--muted); font-size: 10px; font-weight: 700; }
 .form-field input {
   width: 100%;
@@ -359,7 +380,16 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .form-field small { min-height: 13px; color: var(--muted-2); font-size: 9px; }
 .form-field small.form-hint-success { color: var(--green); }
 .form-field small.form-hint-warning { color: var(--amber); }
-.account-form-actions { display: flex; gap: 6px; align-items: center; align-self: end; padding-bottom: 13px; }
+.account-form-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-self: start;
+  margin-top: 0;
+  height: 53px;
+}
+.account-submit-group { display: grid; grid-template-rows: 15px 34px; gap: 4px; min-width: 0; }
+.account-form-kicker { color: var(--muted); font-size: 10px; font-weight: 700; line-height: 15px; }
 .account-note-field input { text-overflow: ellipsis; }
 .primary-button, .secondary-button {
   height: 32px;
@@ -368,6 +398,16 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
   font-size: 12px;
   font-weight: 700;
 }
+.account-form-actions .primary-button,
+.account-form-actions .secondary-button {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding-left: 6px;
+  padding-right: 6px;
+  white-space: nowrap;
+}
+.account-form-actions > .secondary-button { align-self: end; }
 .primary-button { border: 1px solid var(--green); background: var(--green); color: #fff; }
 .primary-button:hover { background: #1f6045; border-color: #1f6045; }
 .secondary-button { border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
@@ -389,29 +429,31 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 }
 #accountView.is-stock-account .account-table th:first-child,
 #accountView.is-stock-account .account-table td:first-child {
-  width: 15%;
+  width: 14%;
   text-align: left;
 }
 #accountView.is-stock-account .account-table th:nth-child(2),
-#accountView.is-stock-account .account-table td:nth-child(2) { width: 8%; }
+#accountView.is-stock-account .account-table td:nth-child(2) { width: 7%; }
 #accountView.is-stock-account .account-table th:nth-child(3),
-#accountView.is-stock-account .account-table td:nth-child(3) { width: 7%; }
+#accountView.is-stock-account .account-table td:nth-child(3) { width: 10%; }
 #accountView.is-stock-account .account-table th:nth-child(4),
-#accountView.is-stock-account .account-table td:nth-child(4) { width: 11%; }
+#accountView.is-stock-account .account-table td:nth-child(4) { width: 8%; }
 #accountView.is-stock-account .account-table th:nth-child(5),
-#accountView.is-stock-account .account-table td:nth-child(5) { width: 9%; }
+#accountView.is-stock-account .account-table td:nth-child(5) { width: 7%; }
 #accountView.is-stock-account .account-table th:nth-child(6),
 #accountView.is-stock-account .account-table td:nth-child(6) { width: 8%; }
 #accountView.is-stock-account .account-table th:nth-child(7),
-#accountView.is-stock-account .account-table td:nth-child(7) { width: 10%; }
+#accountView.is-stock-account .account-table td:nth-child(7) { width: 9%; }
 #accountView.is-stock-account .account-table th:nth-child(8),
-#accountView.is-stock-account .account-table td:nth-child(8) { width: 9%; }
+#accountView.is-stock-account .account-table td:nth-child(8) { width: 8%; }
 #accountView.is-stock-account .account-table th:nth-child(9),
-#accountView.is-stock-account .account-table td:nth-child(9) { width: 11%; }
+#accountView.is-stock-account .account-table td:nth-child(9) { width: 9%; }
 #accountView.is-stock-account .account-table th:nth-child(10),
 #accountView.is-stock-account .account-table td:nth-child(10) { width: 8%; }
 #accountView.is-stock-account .account-table th:nth-child(11),
-#accountView.is-stock-account .account-table td:nth-child(11) { width: 4%; }
+#accountView.is-stock-account .account-table td:nth-child(11) { width: 8%; }
+#accountView.is-stock-account .account-table th:nth-child(12),
+#accountView.is-stock-account .account-table td:nth-child(12) { width: 4%; }
 .account-note-cell { max-width: 180px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-summary-row td {
   background: var(--surface-soft);
@@ -424,6 +466,26 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .account-table .positive-value { color: var(--green); font-weight: 750; }
 .account-table .negative-value { color: var(--red); font-weight: 750; }
 .account-table .dividend-value { color: var(--amber); font-weight: 700; }
+.account-signal-badge {
+  display: inline-flex;
+  min-width: 42px;
+  justify-content: center;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.account-signal-badge.bullish { color: var(--red); background: var(--red-soft); }
+.account-signal-badge.watch { color: var(--amber); background: var(--amber-soft); }
+.account-signal-badge.bearish { color: var(--green); background: var(--green-soft); }
+#accountView.is-stock-account .positive,
+#accountView.is-crypto-account .positive { color: var(--red); }
+#accountView.is-stock-account .alert,
+#accountView.is-crypto-account .alert { color: var(--green); }
+#accountView.is-stock-account .account-table .positive-value,
+#accountView.is-crypto-account .account-table .positive-value { color: var(--red); }
+#accountView.is-stock-account .account-table .negative-value,
+#accountView.is-crypto-account .account-table .negative-value { color: var(--green); }
 .account-table .account-action-button {
   width: 28px;
   height: 28px;
@@ -531,6 +593,23 @@ select:focus, input:focus { border-color: var(--green); }
 .table-note { color: var(--muted-2); }
 .table-scroll { overflow-x: auto; border-top: 1px solid var(--line); }
 .opportunity-table { width: 100%; min-width: 930px; border-collapse: collapse; }
+#overviewView .opportunity-table { table-layout: fixed; }
+#overviewView .opportunity-table th:nth-child(1),
+#overviewView .opportunity-table td:nth-child(1) { width: 21%; }
+#overviewView .opportunity-table th:nth-child(2),
+#overviewView .opportunity-table td:nth-child(2) { width: 10%; }
+#overviewView .opportunity-table th:nth-child(3),
+#overviewView .opportunity-table td:nth-child(3) { width: 14%; }
+#overviewView .opportunity-table th:nth-child(4),
+#overviewView .opportunity-table td:nth-child(4) { width: 10%; }
+#overviewView .opportunity-table th:nth-child(5),
+#overviewView .opportunity-table td:nth-child(5) { width: 13%; }
+#overviewView .opportunity-table th:nth-child(6),
+#overviewView .opportunity-table td:nth-child(6),
+#overviewView .opportunity-table th:nth-child(7),
+#overviewView .opportunity-table td:nth-child(7),
+#overviewView .opportunity-table th:nth-child(8),
+#overviewView .opportunity-table td:nth-child(8) { width: 10.67%; }
 .opportunity-table th, .opportunity-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #edf1ed; }
 .opportunity-table th { color: var(--muted); background: var(--surface-soft); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .opportunity-table td { font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -539,7 +618,10 @@ select:focus, input:focus { border-color: var(--green); }
 .opportunity-table tbody tr { cursor: pointer; }
 .opportunity-table tbody tr.inline-stock-detail { cursor: default; }
 .opportunity-table tbody tr.inline-stock-detail:hover { background: transparent; }
+.opportunity-table tbody tr.inline-crypto-detail { cursor: default; }
+.opportunity-table tbody tr.inline-crypto-detail:hover { background: transparent; }
 .inline-stock-detail td { padding: 14px 18px 18px !important; background: #fbfcfb; }
+.inline-crypto-detail td { padding: 14px 18px 18px !important; background: #fbfcfb; }
 .inline-stock-detail-inner {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
@@ -571,6 +653,38 @@ select:focus, input:focus { border-color: var(--green); }
 .inline-period-tabs button.is-active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .inline-stock-chart { min-height: 220px; }
 .inline-stock-chart svg { width: 100%; height: 190px; overflow: visible; }
+.inline-stock-analysis {
+  min-height: 220px;
+  padding: 4px 8px 8px;
+  border-left: 1px solid var(--line);
+}
+.inline-analysis-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line);
+}
+.inline-analysis-heading strong { font-size: 14px; }
+.inline-analysis-heading span { color: var(--green); font-size: 11px; font-weight: 700; }
+.inline-analysis-summary {
+  padding: 10px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.inline-analysis-list { display: grid; gap: 7px; }
+.inline-analysis-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.inline-analysis-list strong { color: var(--ink); font-size: 12px; }
+.inline-stock-metrics { grid-column: 1 / -1; }
 .inline-chart-legend { display: flex; gap: 18px; margin-bottom: 8px; color: var(--muted); font-size: 11px; }
 .inline-stock-metrics {
   display: flex;
@@ -634,13 +748,13 @@ select:focus, input:focus { border-color: var(--green); }
   .topbar { gap: 20px; padding: 0 20px; }
   .brand-lockup { min-width: auto; }
   .main-nav { gap: 8px; }
-  .main-content { padding: 28px 20px 20px; }
+  .main-content { padding: 16px 20px 20px; }
   .table-heading { align-items: flex-start; flex-direction: column; }
   .table-actions { justify-content: flex-start; }
   .overview-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .account-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #accountView.is-stock-account .account-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .account-form-actions { padding-bottom: 0; }
+  .account-form-actions { grid-column: 1 / -1; margin-top: 0; }
   .app-footer { padding: 0 20px 20px; }
   .account-summary-strip { grid-template-columns: 150px minmax(0, 1fr); }
   .account-metric-grid .metric-card { padding-left: 12px; padding-right: 12px; }
@@ -655,7 +769,7 @@ select:focus, input:focus { border-color: var(--green); }
   .main-nav .account-type-tab { padding-left: 5px; padding-right: 5px; }
   .nav-item { height: 44px; }
   .market-status { display: none; }
-  .main-content { padding: 24px 14px 16px; }
+  .main-content { padding: 14px 14px 16px; }
   .hero-row { align-items: flex-start; flex-direction: column; gap: 16px; }
   .live-clock { width: 100%; }
   .crypto-hero-row { align-items: flex-start; flex-direction: column; gap: 16px; }
@@ -680,6 +794,7 @@ select:focus, input:focus { border-color: var(--green); }
   .metric-card { min-height: 116px; padding: 15px; }
   .inline-stock-detail-inner { grid-template-columns: 1fr; padding: 10px; }
   .inline-stock-detail-heading { align-items: flex-start; flex-direction: column; }
+  .inline-stock-analysis { min-height: 0; padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--line); }
   .inline-stock-metrics { padding: 0; gap: 6px; }
   .inline-stock-metrics span { padding: 0 8px; font-size: 11px; }
   .metric-value { font-size: 26px; }
@@ -704,4 +819,219 @@ select:focus, input:focus { border-color: var(--green); }
   .metric-label { font-size: 11px; }
   .metric-value { margin-top: 9px; font-size: 24px; }
   .switch-control span:last-child { display: none; }
+}
+
+/* Shared component sizing keeps each view visually aligned. */
+:root {
+  --module-radius: 8px;
+  --module-gap: 12px;
+  --module-card-height: 104px;
+  --control-height: 34px;
+}
+
+.panel,
+.metric-card,
+.live-clock,
+.crypto-market-pill,
+.account-type-tab {
+  border-radius: var(--module-radius);
+}
+
+.metric-grid,
+.overview-metric-grid,
+.crypto-metric-grid,
+.account-metric-grid {
+  gap: var(--module-gap);
+}
+
+.metric-card,
+.account-metric-grid .metric-card,
+#overviewView > .metric-grid .metric-card,
+.account-sync-card,
+.live-clock-card,
+.crypto-status-card {
+  min-height: var(--module-card-height);
+  padding: 14px 16px;
+}
+
+.metric-label {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+}
+
+.metric-value {
+  margin: 8px 0 5px;
+  font-size: 26px;
+  line-height: 32px;
+}
+
+.metric-value small {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.metric-meta {
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.account-metric-grid .metric-value,
+#overviewView > .metric-grid .metric-value {
+  margin: 8px 0 5px;
+  font-size: 26px;
+  line-height: 32px;
+}
+
+.account-metric-grid .metric-value small,
+#overviewView > .metric-grid .metric-value small {
+  font-size: 11px;
+}
+
+.account-metric-grid .metric-meta {
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.account-metric-grid #accountProfitMetric,
+.account-metric-grid #accountDividendMetric {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.account-metric-grid #accountProfitMetric.account-positive .metric-value,
+.account-metric-grid #accountDividendMetric.account-positive .metric-value,
+.account-metric-grid #accountCostMetric.account-positive .metric-value {
+  color: var(--red);
+}
+
+.account-metric-grid #accountProfitMetric.account-negative .metric-value,
+.account-metric-grid #accountDividendMetric.account-negative .metric-value,
+.account-metric-grid #accountCostMetric.account-negative .metric-value {
+  color: var(--green);
+}
+
+.account-metric-grid #accountProfitMetric .metric-meta,
+.account-metric-grid #accountDividendMetric .metric-meta {
+  color: var(--muted);
+}
+
+.live-clock-card strong,
+.crypto-status-card strong,
+.account-sync-card strong {
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.live-clock-card small,
+.crypto-status-card small {
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.panel-heading h2 {
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.panel-kicker,
+.eyebrow {
+  margin-bottom: 7px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.table-heading {
+  padding: 18px 22px 14px;
+}
+
+.table-meta {
+  min-height: 32px;
+  padding-bottom: 10px;
+  font-size: 11px;
+}
+
+.opportunity-table th,
+.opportunity-table td,
+.dividend-table th,
+.dividend-table td {
+  min-height: 44px;
+  padding: 12px 14px;
+}
+
+.opportunity-table th,
+.dividend-table th {
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.opportunity-table td,
+.dividend-table td {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+select,
+.search-box,
+.form-field input,
+.primary-button,
+.secondary-button,
+.compact-button {
+  height: var(--control-height);
+}
+
+.primary-button,
+.secondary-button,
+.compact-button {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+@media (max-width: 760px) {
+  .metric-card,
+  .account-metric-grid .metric-card,
+  #overviewView > .metric-grid .metric-card,
+  .account-sync-card,
+  .live-clock-card,
+  .crypto-status-card {
+    min-height: 96px;
+    padding: 13px;
+  }
+
+  .metric-value {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .account-metric-grid .metric-value,
+  #overviewView > .metric-grid .metric-value {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .table-heading {
+    padding: 16px;
+  }
+
+  .opportunity-table th,
+  .opportunity-table td,
+  .dividend-table th,
+  .dividend-table td {
+    padding: 11px 12px;
+  }
+}
+
+#accountView.is-crypto-account .account-summary-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+#accountView.is-crypto-account .account-summary-strip > .account-metric-grid {
+  display: contents;
+}
+
+@media (max-width: 760px) {
+  #accountView.is-crypto-account .account-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

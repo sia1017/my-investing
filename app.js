@@ -73,6 +73,7 @@ const state = {
   period: "3M",
   cryptoSymbol: "BTC",
   cryptoPeriod: "7D",
+  expandedCryptoSymbol: null,
   cryptoSearch: "",
   cryptoSignal: "all",
   accountType: "stock",
@@ -145,8 +146,14 @@ function formatAccountSummaryMoney(value, marketType = state.accountType, digits
     : formatNumber(Number(value || 0) / 10000, digits);
 }
 
-function formatCnyEquivalent(value) {
-  return formatNumber(Number(value || 0) * usdCnyRate, 2);
+function formatCnyEquivalent(value, digits = 2) {
+  return formatNumber(Number(value || 0) * usdCnyRate, digits);
+}
+
+function formatAccountMetricMoney(value) {
+  return state.accountType === "crypto"
+    ? formatNumber(value, 0)
+    : formatAccountSummaryMoney(value);
 }
 
 async function refreshUsdCnyRate() {
@@ -415,9 +422,26 @@ function findAccountMarket(query) {
 }
 
 function getHoldingMarket(holding) {
-  if (holding.marketType === "stock") return stocks.find((item) => item.code === holding.marketKey) || null;
+  if (holding.marketType === "stock") return stocks.find((item) => item.code === holding.marketKey || item.code === holding.code) || null;
   if (holding.marketType === "crypto") return cryptoAssets.find((item) => item.symbol === holding.marketKey) || null;
   return null;
+}
+
+function getStockSignal(stock) {
+  const history = Array.isArray(stock?.history)
+    ? stock.history.map(Number).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  const currentPrice = Number(stock?.price) || history.at(-1) || 0;
+  const recent = history.slice(-5);
+  const previous = history.slice(-10, -5);
+  const recentAverage = recent.length ? recent.reduce((sum, value) => sum + value, 0) / recent.length : currentPrice;
+  const previousAverage = previous.length ? previous.reduce((sum, value) => sum + value, 0) / previous.length : recentAverage;
+  const momentum = previousAverage > 0 ? (recentAverage / previousAverage - 1) * 100 : 0;
+  const latestMove = recent.length > 1 ? (recent.at(-1) / recent[0] - 1) * 100 : 0;
+  const aboveAverage = recentAverage > 0 ? (currentPrice / recentAverage - 1) * 100 : 0;
+  if ((momentum >= 1.2 && latestMove >= 0) || aboveAverage >= 1.5) return { label: "偏多", className: "bullish" };
+  if ((momentum <= -1.2 && latestMove <= 0) || aboveAverage <= -1.5) return { label: "偏空", className: "bearish" };
+  return { label: "观察", className: "watch" };
 }
 
 function getHoldingCurrentPrice(holding) {
@@ -434,7 +458,7 @@ function getAccountMeta() {
   if (state.accountType === "crypto") {
     return {
       title: "美元账户",
-      currency: "美元",
+      currency: "$",
       unit: "USD",
       marketLabel: "美元 / BTC / SOL / ETH",
       buyLabel: "单价",
@@ -510,6 +534,7 @@ function setAccountType(type) {
   const accountTableNote = $("#accountTableNote");
   if (accountTableNote) accountTableNote.textContent = meta.tableNote;
   $("#accountBuyPriceLabel").textContent = meta.buyLabel;
+  $("#accountTargetInput").placeholder = state.accountType === "stock" ? "名称 / 代码" : "名称";
   $("#accountCurrentPriceLabel").textContent = meta.currentLabel;
   $("#accountQuantityLabel").textContent = meta.quantityLabel;
   $("#accountBuyPriceHint").textContent = meta.buyHint;
@@ -557,9 +582,7 @@ function setAccountType(type) {
       ? ""
       : meta.unit === "CNY" ? "w" : meta.currency;
   }
-  const exchangeCard = $("#accountExchangeMetric");
   const equivalentCard = $("#accountEquivalentMetric");
-  if (exchangeCard) exchangeCard.classList.toggle("is-visible", state.accountType === "crypto");
   if (equivalentCard) equivalentCard.classList.toggle("is-visible", state.accountType === "crypto");
   if (state.editingHoldingId != null) resetAccountForm();
   if (state.accountType === "fixed" && !$("#accountQuantityInput").value) {
@@ -587,9 +610,10 @@ function renderAccountHeaders() {
   if (state.accountType === "stock") {
     header.innerHTML = `
       <th>标的</th>
+      <th>信号</th>
+      <th id="accountTotalHeader">${getAccountMeta().totalHeader}</th>
       <th id="accountBuyPriceHeader">${getAccountMeta().buyHeader}</th>
       <th id="accountQuantityHeader">${getAccountMeta().quantityHeader}</th>
-      <th id="accountTotalHeader">${getAccountMeta().totalHeader}</th>
       <th id="accountCurrentPriceHeader">${getAccountMeta().currentHeader}</th>
       <th id="accountProfitRateHeader">${getAccountMeta().profitRateHeader}</th>
       <th>收益</th>
@@ -1068,7 +1092,6 @@ function applyCryptoQuotes(quotes) {
 
 function connectCryptoStream() {
   if (!state.live || !window.WebSocket) return;
-  if (marketApiBase) return;
   if (cryptoSocket && [window.WebSocket.OPEN, window.WebSocket.CONNECTING].includes(cryptoSocket.readyState)) return;
   const streams = cryptoAssets.map((asset) => `${asset.symbol.toLowerCase()}usdt@ticker`).join("/");
   let socket;
@@ -1222,8 +1245,6 @@ function renderOptions() {
     trendSelect.innerHTML = trendStocks.map((stock) => `<option value="${stock.code}">${stock.name} · ${stock.code}</option>`).join("");
     trendSelect.value = state.selectedCode;
   }
-  $("#cryptoSelect").innerHTML = cryptoAssets.map((asset) => `<option value="${asset.symbol}">${asset.symbol} · ${asset.name}</option>`).join("");
-  $("#cryptoSelect").value = state.cryptoSymbol;
 }
 
 function renderMetrics() {
@@ -1361,6 +1382,16 @@ function renderInlineStockDetail(stock) {
   const yieldPoints = yieldValues.map((value, index) => `${x(index)},${yieldY(value)}`).join(" ");
   const yLabels = [max, min].map((value) => `<text class="chart-label" x="0" y="${y(value) + 3}">${formatNumber(value)}</text>`).join("");
   const grid = [pad.top, height / 2, height - pad.bottom].map((lineY) => `<line class="grid-line" x1="${pad.left}" y1="${lineY}" x2="${width - pad.right}" y2="${lineY}"></line>`).join("");
+  const currentPrice = Number(stock.price) || 0;
+  const firstPrice = Number(stock.first) || 0;
+  const currentYield = getStockCurrentYield(stock);
+  const firstYield = Number(stock.firstYield) || 0;
+  const pricePosition = firstPrice > 0 ? currentPrice / firstPrice * 100 : 0;
+  const yieldPremium = firstYield > 0 ? (currentYield / firstYield - 1) * 100 : 0;
+  const trendChange = values.length > 1 && values[0] > 0 ? (values[values.length - 1] / values[0] - 1) * 100 : 0;
+  const trendLabel = trendChange >= 3 ? "趋势偏强" : trendChange <= -3 ? "趋势偏弱" : "区间震荡";
+  const priceLabel = currentPrice <= Number(stock.add) ? "已到加仓区" : currentPrice <= firstPrice ? "已到首仓区" : "等待回落";
+  const yieldLabel = currentYield >= Number(stock.addYield) ? "股息率达加仓要求" : currentYield >= firstYield ? "股息率达首仓要求" : "股息率未达目标";
   return `
     <tr class="inline-stock-detail">
       <td colspan="8">
@@ -1383,6 +1414,17 @@ function renderInlineStockDetail(stock) {
               <polyline class="yield-line" points="${yieldPoints}"></polyline>
               <circle class="chart-dot" cx="${x(values.length - 1)}" cy="${y(values[values.length - 1])}" r="4"></circle>
             </svg>
+          </div>
+          <div class="inline-stock-analysis">
+            <div class="inline-analysis-heading"><strong>走势分析</strong><span>${trendLabel}</span></div>
+            <div class="inline-analysis-summary">${escapeHtml(stock.name)} 当前价格${priceLabel}，${yieldLabel}。</div>
+            <div class="inline-analysis-list">
+              <div><span>区间走势</span><strong class="${trendChange >= 0 ? "positive-value" : "negative-value"}">${trendChange >= 0 ? "+" : ""}${formatNumber(trendChange)}%</strong></div>
+              <div><span>当前股息率</span><strong>${formatNumber(currentYield)}%</strong></div>
+              <div><span>首仓价位置</span><strong>${formatNumber(pricePosition)}%</strong></div>
+              <div><span>股息率优势</span><strong class="${yieldPremium >= 0 ? "positive-value" : "negative-value"}">${yieldPremium >= 0 ? "+" : ""}${formatNumber(yieldPremium)}%</strong></div>
+              <div><span>连续分红</span><strong>${stock.years} 年</strong></div>
+            </div>
           </div>
           <div class="inline-stock-metrics">
             <span><b>当前股息率</b>${formatNumber(getStockCurrentYield(stock))}%</span>
@@ -1408,6 +1450,7 @@ function renderCryptoMetrics() {
 }
 
 function renderCryptoChart() {
+  if (!$("#cryptoTrendChart")) return;
   const asset = cryptoAssets.find((item) => item.symbol === state.cryptoSymbol) || cryptoAssets[0];
   const values = asset.history.slice(-10);
   const min = Math.min(...values);
@@ -1442,6 +1485,7 @@ function renderCryptoChart() {
 }
 
 function renderCryptoSignals() {
+  if (!$("#signalSentiment")) return;
   const asset = cryptoAssets.find((item) => item.symbol === state.cryptoSymbol) || cryptoAssets[0];
   const sentiment = Math.round(Math.min(94, Math.max(30, 64 + asset.change7 * 1.1)));
   const trend = Math.round(Math.min(92, Math.max(28, 66 + asset.change7 * 1.8)));
@@ -1481,7 +1525,76 @@ function renderCryptoTable() {
       <td><span class="signal-badge ${asset.signal}">${asset.signal === "bullish" ? "偏多" : "观察"}</span></td>
       <td class="crypto-range">${formatCryptoPrice(asset.support)} - ${formatCryptoPrice(asset.resistance)}</td>
     </tr>
+    ${asset.symbol === state.expandedCryptoSymbol ? renderInlineCryptoDetail(asset) : ""}
   `).join("") || `<tr><td class="empty-state" colspan="8">没有符合条件的币种。</td></tr>`;
+}
+
+function renderInlineCryptoDetail(asset) {
+  const values = asset.history.length > 1 ? asset.history.slice(-24) : [asset.price, asset.price];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(max - min, max * 0.01);
+  const width = 860;
+  const height = 190;
+  const pad = { top: 16, right: 16, bottom: 20, left: 52 };
+  const x = (index) => pad.left + index * ((width - pad.left - pad.right) / Math.max(values.length - 1, 1));
+  const y = (value) => pad.top + (max - value) / range * (height - pad.top - pad.bottom);
+  const points = values.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+  const areaPoints = `${pad.left},${height - pad.bottom} ${points} ${x(values.length - 1)},${height - pad.bottom}`;
+  const emaValues = values.map((value, index) => {
+    const window = values.slice(Math.max(0, index - 4), index + 1);
+    return window.reduce((sum, item) => sum + item, 0) / window.length;
+  });
+  const emaPoints = emaValues.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+  const yLabels = [max, max - range * 0.5, min]
+    .map((value) => `<text class="chart-label" x="0" y="${y(value) + 3}">${formatCryptoPrice(value)}</text>`)
+    .join("");
+  const grid = [pad.top, height / 2, height - pad.bottom]
+    .map((lineY) => `<line class="grid-line" x1="${pad.left}" y1="${lineY}" x2="${width - pad.right}" y2="${lineY}"></line>`)
+    .join("");
+  const trendScore = Math.round(Math.min(95, Math.max(20, 60 + asset.change7 * 2)));
+  const momentumScore = Math.round(Math.min(95, Math.max(20, 58 + asset.change24 * 3)));
+  const riskScore = Math.round(Math.min(95, Math.max(20, asset.volatility * 6)));
+  const trendLabel = trendScore >= 70 ? "强势" : trendScore >= 50 ? "震荡" : "偏弱";
+  const momentumLabel = momentumScore >= 65 ? "偏多" : momentumScore >= 45 ? "中性" : "偏空";
+  const riskLabel = riskScore >= 70 ? "偏高" : riskScore >= 45 ? "中等" : "较低";
+  return `
+    <tr class="inline-crypto-detail">
+      <td colspan="8">
+        <div class="inline-stock-detail-inner inline-crypto-detail-inner">
+          <div class="inline-stock-detail-heading">
+            <div>
+              <strong>${escapeHtml(asset.name)} · ${asset.symbol}</strong>
+              <span>价格趋势与技术指标 · ${state.cryptoPeriod}</span>
+            </div>
+            <div class="inline-period-tabs">
+              ${["24H", "7D", "30D"].map((period) => `<button type="button" class="${period === state.cryptoPeriod ? "is-active" : ""}" data-inline-crypto-period="${period}" data-inline-crypto-symbol="${asset.symbol}">${period}</button>`).join("")}
+            </div>
+          </div>
+          <div class="inline-stock-chart">
+            <div class="inline-chart-legend">
+              <span><i class="legend-line legend-price"></i>价格</span>
+              <span><i class="legend-line legend-yield"></i>EMA</span>
+            </div>
+            <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(asset.name)}价格趋势图">
+              ${grid}${yLabels}
+              <polygon class="price-area" points="${areaPoints}"></polygon>
+              <polyline class="price-line" points="${points}"></polyline>
+              <polyline class="yield-line" points="${emaPoints}"></polyline>
+              <circle class="chart-dot" cx="${x(values.length - 1)}" cy="${y(values[values.length - 1])}" r="4"></circle>
+            </svg>
+          </div>
+          <div class="inline-stock-metrics inline-crypto-metrics">
+            <span><b>趋势</b>${trendLabel} · ${trendScore}</span>
+            <span><b>短线动能</b>${momentumLabel} · ${momentumScore}</span>
+            <span><b>波动风险</b>${riskLabel} · ${formatNumber(asset.volatility)}%</span>
+            <span><b>24H成交额</b>$${Number(asset.volume24 || 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+            <span><b>支撑</b>${formatCryptoPrice(asset.support)}</span>
+            <span><b>阻力</b>${formatCryptoPrice(asset.resistance)}</span>
+          </div>
+        </div>
+      </td>
+    </tr>`;
 }
 
 function renderCryptoAll({ updated = false } = {}) {
@@ -1513,32 +1626,40 @@ function renderAccountMetrics() {
   const summary = getAccountSummary();
   const profitRate = summary.cost ? summary.profit / summary.cost * 100 : 0;
   const dividendYield = summary.cost ? summary.dividend / summary.cost * 100 : 0;
+  const profitColorClass = summary.profit >= 0 ? "account-positive" : "account-negative";
   const profitClass = summary.profit >= 0 ? "positive" : "alert";
-  $("#accountMetricValue").textContent = formatAccountSummaryMoney(summary.marketValue);
-  $("#accountMetricCost").textContent = formatAccountSummaryMoney(
+  const dividendValue = state.accountType === "fixed" ? summary.profit : summary.dividend;
+  const dividendColorClass = dividendValue >= 0 ? "account-positive" : "account-negative";
+  $("#accountMetricValue").textContent = formatAccountMetricMoney(summary.marketValue);
+  $("#accountMetricCost").textContent = formatAccountMetricMoney(
     state.accountType === "fixed" ? summary.profit : summary.cost
   );
   $("#accountMetricProfit").textContent = state.accountType === "fixed"
-    ? `${formatNumber(profitRate, 2)}`
-    : state.accountType === "stock"
-      ? `${summary.profit >= 0 ? "+" : ""}${formatAccountMoney(summary.profit)}`
-      : `${summary.profit >= 0 ? "+" : ""}${formatAccountMoney(summary.profit, state.accountType)}`;
-  $("#accountMetricProfit").className = `metric-value ${profitClass}`;
+      ? `${formatNumber(profitRate, 2)}`
+      : state.accountType === "stock"
+        ? `${summary.profit >= 0 ? "+" : ""}${formatAccountMoney(summary.profit)}`
+        : `${summary.profit >= 0 ? "+" : ""}${formatNumber(summary.profit, 0)}`;
+  $("#accountMetricProfit").className = `metric-value ${state.accountType === "fixed" ? "" : profitClass}`;
+  $("#accountCostMetric").classList.toggle("account-positive", state.accountType === "fixed" && summary.profit >= 0);
+  $("#accountCostMetric").classList.toggle("account-negative", state.accountType === "fixed" && summary.profit < 0);
   $("#accountMetricProfitMeta").textContent = state.accountType === "fixed"
     ? "按本金加权"
     : `收益率 ${profitRate >= 0 ? "+" : ""}${formatNumber(profitRate, 2)}%`;
-  $("#accountMetricProfitMeta").className = `metric-meta ${profitClass}`;
-  $("#accountMetricDividend").textContent = formatAccountSummaryMoney(
-    state.accountType === "fixed" ? summary.profit : summary.dividend,
+  $("#accountMetricProfitMeta").className = "metric-meta";
+  $("#accountProfitMetric").classList.toggle("account-positive", state.accountType !== "fixed" && summary.profit >= 0);
+  $("#accountProfitMetric").classList.toggle("account-negative", state.accountType !== "fixed" && summary.profit < 0);
+  $("#accountMetricDividend").textContent = formatAccountMetricMoney(
+    dividendValue,
   );
+  $("#accountMetricYieldMeta").className = "metric-meta";
+  $("#accountDividendMetric").classList.toggle("account-positive", dividendValue >= 0);
+  $("#accountDividendMetric").classList.toggle("account-negative", dividendValue < 0);
   if (state.accountType === "crypto") {
     $("#accountExchangeRate").textContent = formatNumber(usdCnyRate, 4);
     $("#accountExchangeMeta").textContent = usdCnyRateUpdatedAt
       ? `更新 ${formatTime(usdCnyRateUpdatedAt)}`
       : "实时汇率";
-    $("#accountEquivalentValue").textContent = formatCnyEquivalent(summary.marketValue);
-    $("#accountEquivalentCost").textContent = formatCnyEquivalent(summary.cost);
-    $("#accountEquivalentProfit").textContent = `${summary.profit >= 0 ? "+" : ""}${formatCnyEquivalent(summary.profit)}`;
+    $("#accountEquivalentValue").textContent = formatCnyEquivalent(summary.marketValue, 0);
   }
   $("#accountMetricYieldMeta").textContent = state.accountType === "fixed"
     ? `年化率 ${formatNumber(profitRate, 2)}%`
@@ -1549,7 +1670,11 @@ function renderAccountMetrics() {
 }
 
 function renderAccountTable() {
-  const accountHoldings = getAccountHoldings();
+  const accountHoldings = getAccountHoldings().slice().sort((a, b) => {
+    const currentValueA = getHoldingCurrentPrice(a) * (Number(a.quantity) || 0);
+    const currentValueB = getHoldingCurrentPrice(b) * (Number(b.quantity) || 0);
+    return currentValueB - currentValueA;
+  });
   const isFixed = state.accountType === "fixed";
   const summary = getAccountSummary();
   const summaryProfitRate = summary.cost ? summary.profit / summary.cost * 100 : 0;
@@ -1594,10 +1719,20 @@ function renderAccountTable() {
     const currentYield = getHoldingYield(holding);
     const dividend = (Number(holding.dividendPerUnit) || 0) * quantity;
     const profitClass = profit >= 0 ? "positive-value" : "negative-value";
-    const codeLabel = holding.code || holding.marketKey || "自定义";
+    const holdingMarket = getHoldingMarket(holding);
+    const stockIndustryLabel = holding.marketType === "stock" && holdingMarket
+      && holdingMarket.sector && holdingMarket.sub
+      && !["其他", "未知"].includes(String(holdingMarket.sector).trim())
+      && !["其他", "未知"].includes(String(holdingMarket.sub).trim())
+      ? ` · ${escapeHtml(holdingMarket.sector)} / ${escapeHtml(holdingMarket.sub)}`
+      : "";
+    const holdingMetaLabel = holding.marketType === "stock"
+      ? stockIndustryLabel.replace(/^ · /, "")
+      : "";
+    const stockSignal = getStockSignal(holdingMarket);
     return `
       <tr data-holding-id="${holding.id}">
-        <td><span class="stock-name">${escapeHtml(holding.name)}</span>${isFixed ? "" : `<span class="stock-code">${escapeHtml(codeLabel)}${holding.marketType === "crypto" ? " · 虚拟币" : ""}</span>`}</td>
+        <td><span class="stock-name">${escapeHtml(holding.name)}</span>${isFixed || !holdingMetaLabel ? "" : `<span class="stock-code">${holdingMetaLabel}</span>`}</td>
         ${isFixed ? `
           <td>${formatAccountSummaryMoney(buyPrice, holding.marketType)}</td>
           <td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 4)}</td>
@@ -1606,9 +1741,10 @@ function renderAccountTable() {
           <td class="${profitClass}">${profit >= 0 ? "+" : ""}${formatAccountSummaryMoney(profit, holding.marketType)}</td>
           <td class="account-note-cell">${escapeHtml(holding.note || "—")}</td>` : `
           ${state.accountType === "stock" ? `
+          <td><span class="account-signal-badge ${stockSignal.className}">${stockSignal.label}</span></td>
+          <td class="account-summary-number">${formatAccountMoney(cost, holding.marketType)}</td>
           <td>${formatBuyPrice(buyPrice)}</td>
-          <td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 4)}</td>
-          <td class="account-summary-number">${formatAccountMoney(cost, holding.marketType)}</td>` : `
+          <td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 4)}</td>` : `
           <td>${formatBuyPrice(buyPrice)}</td>
           ${state.accountType === "crypto" ? `<td>${formatNumber(quantity, quantity % 1 === 0 ? 0 : 6)}</td>` : ""}
           <td class="account-summary-number">${formatAccountMoney(cost, holding.marketType)}</td>`}
@@ -1629,7 +1765,7 @@ function renderAccountTable() {
       </tr>`;
   }).join("") : `
     <tr>
-      <td colspan="${isFixed ? 8 : 11}" class="account-empty-state">
+      <td colspan="${isFixed ? 8 : state.accountType === "stock" ? 12 : 9}" class="account-empty-state">
         <strong>还没有持仓</strong>
         <span>在上方填写标的、买入价和数量，即可开始跟踪。</span>
       </td>
@@ -1823,12 +1959,6 @@ function bindEvents() {
     renderTrendChart();
     renderTable();
   });
-  $("#cryptoSelect").addEventListener("change", (event) => {
-    state.cryptoSymbol = event.target.value;
-    renderCryptoChart();
-    renderCryptoSignals();
-    renderCryptoTable();
-  });
   $("#cryptoSearchInput").addEventListener("input", (event) => {
     state.cryptoSearch = event.target.value;
     renderCryptoTable();
@@ -1838,10 +1968,25 @@ function bindEvents() {
     renderCryptoTable();
   });
   $("#cryptoTableBody").addEventListener("click", (event) => {
+    const periodButton = event.target.closest("[data-inline-crypto-period]");
+    if (periodButton) {
+      state.cryptoPeriod = periodButton.dataset.inlineCryptoPeriod;
+      state.cryptoSymbol = periodButton.dataset.inlineCryptoSymbol || state.cryptoSymbol;
+      state.expandedCryptoSymbol = state.cryptoSymbol;
+      $$(".period-tab").forEach((tab) => {
+        if (tab.classList.contains("crypto-period-tab")) {
+          tab.classList.toggle("is-active", tab.dataset.period === state.cryptoPeriod);
+        }
+      });
+      renderCryptoChart();
+      renderCryptoSignals();
+      renderCryptoTable();
+      return;
+    }
     const row = event.target.closest("tr[data-crypto-symbol]");
     if (!row) return;
     state.cryptoSymbol = row.dataset.cryptoSymbol;
-    $("#cryptoSelect").value = state.cryptoSymbol;
+    state.expandedCryptoSymbol = state.expandedCryptoSymbol === state.cryptoSymbol ? null : state.cryptoSymbol;
     renderCryptoChart();
     renderCryptoSignals();
     renderCryptoTable();
@@ -1994,14 +2139,8 @@ refreshLiveMarketData({ refreshCrypto: true });
 refreshUsdCnyRate();
 refreshDividendData();
 dividendLastRefreshDate = getBeijingDate();
-setInterval(() => { if (state.live) refreshLiveMarketData(); }, 5000);
-setInterval(() => { if (state.live) refreshLiveMarketData({ refreshCrypto: true }); }, 60000);
+setInterval(() => { if (state.live) refreshLiveMarketData({ refreshCrypto: true }); }, 5000);
 setInterval(() => { if (state.live) refreshUsdCnyRate(); }, 1800000);
-setInterval(() => {
-  if (state.live && !["live", "websocket"].includes(cryptoDataMode)) {
-    refreshLiveMarketData({ refreshCrypto: true });
-  }
-}, 60000);
 setInterval(() => {
   const today = getBeijingDate();
   if (today !== dividendLastRefreshDate) refreshDividendData({ force: true });
