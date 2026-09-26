@@ -90,6 +90,7 @@ let holdings = loadHoldings();
 let liveRefreshInFlight = false;
 let cryptoSocket = null;
 let cryptoSocketRetryTimer = null;
+let cryptoStreamEndpointIndex = 0;
 let stockDataMode = "unavailable";
 let cryptoDataMode = "unavailable";
 let dividendEvents = filterWhitelistDividends(dividendSnapshot).map((event) => ({ ...event }));
@@ -1145,9 +1146,42 @@ function connectCryptoStream() {
   if (!state.live || !window.WebSocket) return;
   if (cryptoSocket && [window.WebSocket.OPEN, window.WebSocket.CONNECTING].includes(cryptoSocket.readyState)) return;
   const streams = cryptoAssets.map((asset) => `${asset.symbol.toLowerCase()}usdt@ticker`).join("/");
+  const endpoints = [
+    {
+      url: `wss://stream.binance.com:9443/stream?streams=${streams}`,
+      parse(packet) {
+        return packet.data || packet;
+      }
+    },
+    {
+      url: `wss://stream.binance.com/ws/${cryptoAssets.map((asset) => `${asset.symbol.toLowerCase()}usdt@ticker`).join("/")}`,
+      parse(packet) {
+        return packet;
+      }
+    },
+    {
+      url: "wss://stream.bybit.com/v5/public/spot",
+      subscribe: {
+        op: "subscribe",
+        args: cryptoAssets.map((asset) => `tickers.${asset.symbol}USDT`)
+      },
+      parse(packet) {
+        const data = packet?.data;
+        if (!data || Array.isArray(data)) return data;
+        return {
+          s: data.symbol,
+          c: data.lastPrice,
+          o: data.prevPrice24h,
+          P: Number(data.price24hPcnt) * 100,
+          q: data.volume24h
+        };
+      }
+    }
+  ];
+  const endpoint = endpoints[cryptoStreamEndpointIndex % endpoints.length];
   let socket;
   try {
-    socket = new window.WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`);
+    socket = new window.WebSocket(endpoint.url);
   } catch {
     cryptoDataMode = "unavailable";
     setStatus("cryptoStatusDot", "cryptoStatusText", "实时流连接失败", "warning");
@@ -1157,15 +1191,18 @@ function connectCryptoStream() {
   }
   cryptoSocket = socket;
   socket.onopen = () => {
+    if (endpoint.subscribe) socket.send(JSON.stringify(endpoint.subscribe));
     cryptoDataMode = "websocket";
     setStatus("cryptoStatusDot", "cryptoStatusText", "加密市场实时在线", "live");
-    $("#cryptoDataSource").textContent = "Binance WebSocket 实时流";
+    $("#cryptoDataSource").textContent = "实时 WebSocket 行情";
     updateMarketStatus();
   };
   socket.onmessage = (event) => {
     try {
       const packet = JSON.parse(event.data);
-      if (applyCryptoTicker(packet.data || packet)) {
+      const parsed = endpoint.parse(packet);
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      if (rows.some((row) => applyCryptoTicker(row))) {
         renderCryptoAll({ updated: true });
         renderAccountAll();
         updateMarketStatus();
@@ -1176,13 +1213,15 @@ function connectCryptoStream() {
   };
   socket.onerror = () => {
     cryptoDataMode = "unavailable";
+    cryptoStreamEndpointIndex = (cryptoStreamEndpointIndex + 1) % endpoints.length;
     setStatus("cryptoStatusDot", "cryptoStatusText", "实时流连接失败", "warning");
-    $("#cryptoDataSource").textContent = "等待多源行情轮询";
+    $("#cryptoDataSource").textContent = "切换行情通道中";
     updateMarketStatus();
   };
   socket.onclose = () => {
     cryptoSocket = null;
     if (state.live) {
+      cryptoStreamEndpointIndex = (cryptoStreamEndpointIndex + 1) % endpoints.length;
       clearTimeout(cryptoSocketRetryTimer);
       cryptoSocketRetryTimer = setTimeout(connectCryptoStream, 10000);
     }
@@ -1247,7 +1286,7 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
       cryptoDataMode === "websocket" ? "加密市场实时在线" : cryptoDataMode === "live" ? "加密行情已同步" : "实时接口不可用",
       cryptoDataMode === "live" || cryptoDataMode === "websocket" ? "live" : "warning"
     );
-    if (cryptoDataMode === "live") $("#cryptoDataSource").textContent = "WebSocket 实时 · 多源轮询兜底";
+    if (cryptoDataMode === "live") $("#cryptoDataSource").textContent = "实时 WebSocket · 多源轮询兜底";
   }
   $("#stockDataSource").textContent = stockDataMode === "live"
     ? "东方财富 / 腾讯行情 · 实时轮询"
