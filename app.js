@@ -1977,10 +1977,6 @@ function bindEvents() {
     }
     showToast(state.live ? "自动刷新已开启" : "自动刷新已暂停");
   });
-  $("#refreshButton").addEventListener("click", () => {
-    refreshLiveMarketData({ manual: true });
-    refreshDividendData({ force: true, manual: true });
-  });
   const trendSelect = $("#trendStockSelect");
   if (trendSelect) {
     trendSelect.addEventListener("change", (event) => {
@@ -2079,9 +2075,6 @@ function bindEvents() {
   $("#accountDividendInput").addEventListener("input", updateAccountFormPreview);
   $("#accountResetButton").addEventListener("click", () => {
     resetAccountForm();
-  });
-  $("#accountRefreshButton").addEventListener("click", () => {
-    refreshLiveMarketData({ manual: true });
   });
   $("#exportHoldingsButton").addEventListener("click", downloadHoldings);
   $("#importHoldingsButton").addEventListener("click", () => {
