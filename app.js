@@ -91,6 +91,7 @@ let liveRefreshInFlight = false;
 let cryptoSocket = null;
 let cryptoSocketRetryTimer = null;
 let cryptoStreamEndpointIndex = 0;
+let cryptoLastUpdatedAt = null;
 let stockDataMode = "unavailable";
 let cryptoDataMode = "unavailable";
 let dividendEvents = filterWhitelistDividends(dividendSnapshot).map((event) => ({ ...event }));
@@ -999,6 +1000,30 @@ async function loadCryptoQuotes() {
   const coingeckoIdParam = coingeckoRequested.map((symbol) => coingeckoIds[symbol]).join(",");
   const providers = [
     {
+      endpoints: ["coinbase-spot"],
+      async fetchQuotes() {
+        const results = await Promise.allSettled(symbols.map(async (symbol) => {
+          const base = symbol.replace(/USDT$/, "");
+          const response = await fetch(`https://api.coinbase.com/v2/prices/${base}-USD/spot?_=${Date.now()}`, { cache: "no-store" });
+          if (!response.ok) throw new Error(`Coinbase ${base} HTTP ${response.status}`);
+          const payload = await response.json();
+          const price = Number(payload?.data?.amount);
+          const asset = cryptoAssets.find((item) => item.symbol === base);
+          if (!asset || !Number.isFinite(price) || price <= 0) return null;
+          return {
+            s: symbol,
+            c: String(price),
+            o: String(asset.prev || price),
+            P: String(asset.change24 || 0),
+            q: String(asset.volume24 || 0)
+          };
+        }));
+        return results
+          .filter((result) => result.status === "fulfilled" && result.value)
+          .map((result) => result.value);
+      }
+    },
+    {
       endpoints: [
         "https://api.binance.com/api/v3/ticker/24hr",
         "https://data-api.binance.vision/api/v3/ticker/24hr"
@@ -1107,10 +1132,14 @@ async function loadCryptoQuotes() {
   for (const provider of providers) {
     for (const endpoint of provider.endpoints) {
       try {
-        const response = await fetch(`${endpoint}${endpoint.includes("?") ? "&" : "?"}_=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error(`crypto quote HTTP ${response.status}`);
-        const payload = await response.json();
-        const quotes = provider.normalize(payload);
+        const quotes = provider.fetchQuotes
+          ? await provider.fetchQuotes()
+          : await fetch(`${endpoint}${endpoint.includes("?") ? "&" : "?"}_=${Date.now()}`, { cache: "no-store" })
+            .then((response) => {
+              if (!response.ok) throw new Error(`crypto quote HTTP ${response.status}`);
+              return response.json();
+            })
+            .then((payload) => provider.normalize(payload));
         if (quotes.length) return quotes;
         throw new Error("empty crypto quote response");
       } catch (error) {
@@ -1203,6 +1232,7 @@ function connectCryptoStream() {
       const parsed = endpoint.parse(packet);
       const rows = Array.isArray(parsed) ? parsed : [parsed];
       if (rows.some((row) => applyCryptoTicker(row))) {
+        cryptoLastUpdatedAt = new Date();
         renderCryptoAll({ updated: true });
         renderAccountAll();
         updateMarketStatus();
@@ -1261,6 +1291,7 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
     : loadCryptoQuotes()
       .then((quotes) => {
         cryptoUpdated = applyCryptoQuotes(quotes) > 0;
+        if (cryptoUpdated) cryptoLastUpdatedAt = new Date();
         cryptoDataMode = cryptoUpdated ? "live" : "unavailable";
         renderCryptoAll({ updated: true });
         renderAccountAll();
@@ -1286,7 +1317,10 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
       cryptoDataMode === "websocket" ? "加密市场实时在线" : cryptoDataMode === "live" ? "加密行情已同步" : "实时接口不可用",
       cryptoDataMode === "live" || cryptoDataMode === "websocket" ? "live" : "warning"
     );
-    if (cryptoDataMode === "live") $("#cryptoDataSource").textContent = "实时 WebSocket · 多源轮询兜底";
+    if (cryptoDataMode === "live") {
+      const updatedLabel = cryptoLastUpdatedAt ? ` · 更新 ${formatTime(cryptoLastUpdatedAt)}` : "";
+      $("#cryptoDataSource").textContent = `实时行情 · 多源轮询兜底${updatedLabel}`;
+    }
   }
   $("#stockDataSource").textContent = stockDataMode === "live"
     ? "东方财富 / 腾讯行情 · 实时轮询"
