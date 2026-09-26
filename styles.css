@@ -1035,3 +1035,225 @@ select,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Mobile layout is intentionally stacked so the header and account controls
+   stay readable on narrow screens without widening the whole page. */
+@media (max-width: 760px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 9px 12px 10px;
+  }
+
+  .brand-lockup {
+    min-height: 32px;
+  }
+
+  .topbar-actions {
+    order: 2;
+    width: 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .topbar-actions .compact-button {
+    width: 100%;
+    min-width: 0;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+
+  .main-nav {
+    order: 3;
+    width: 100%;
+    min-width: 0;
+    gap: 5px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .nav-item,
+  .main-nav .account-type-tab {
+    min-width: 0;
+    height: 43px;
+    padding: 4px 5px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .nav-item {
+    font-size: 12px;
+  }
+
+  .main-nav .account-type-tab span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+
+  .main-nav .account-type-tab small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8px;
+  }
+
+  .main-content {
+    width: 100%;
+    min-width: 0;
+    padding: 12px 10px 16px;
+  }
+
+  .panel,
+  .metric-card,
+  .live-clock {
+    min-width: 0;
+  }
+
+  .panel-heading,
+  .table-heading {
+    gap: 9px;
+  }
+
+  .table-heading h2,
+  .panel-heading h2 {
+    font-size: 15px;
+  }
+
+  .table-actions {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .table-actions > * {
+    max-width: 100%;
+  }
+
+  .search-box {
+    min-width: 0;
+  }
+
+  .account-summary-strip {
+    gap: 7px;
+  }
+
+  .account-sync-card {
+    min-height: 62px;
+  }
+
+  .account-metric-grid {
+    gap: 7px;
+  }
+
+  .account-summary-strip > .account-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #accountView.is-crypto-account .account-summary-strip > .account-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #accountView.is-fixed-account .account-summary-strip > .account-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .account-metric-grid .metric-card {
+    min-height: 84px;
+    padding: 11px;
+  }
+
+  .account-metric-grid .metric-value {
+    margin: 4px 0 2px;
+    font-size: 20px;
+    line-height: 26px;
+  }
+
+  .account-metric-grid .metric-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .account-form-panel {
+    padding: 12px;
+  }
+
+  .account-form {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .form-field {
+    grid-template-rows: 15px 32px 13px;
+    gap: 3px;
+  }
+
+  .form-field input {
+    height: 32px;
+    padding: 0 7px;
+    font-size: 12px;
+  }
+
+  .account-form-actions {
+    gap: 6px;
+    height: 51px;
+  }
+
+  .account-holdings-panel .table-heading {
+    padding-bottom: 10px;
+  }
+
+  .account-table,
+  .opportunity-table,
+  .dividend-table {
+    font-size: 11px;
+  }
+
+  .table-scroll {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toast {
+    right: 10px;
+    bottom: 10px;
+    max-width: calc(100vw - 20px);
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+
+  .main-content {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .account-metric-grid .metric-card {
+    padding: 9px;
+  }
+
+  .account-metric-grid .metric-value {
+    font-size: 18px;
+  }
+
+  .account-form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-form-actions {
+    grid-column: 1;
+  }
+}
