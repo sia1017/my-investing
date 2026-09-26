@@ -86,6 +86,7 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 let toastTimer;
+let holdingsStorageSource = "default";
 let holdings = loadHoldings();
 let liveRefreshInFlight = false;
 let cryptoSocket = null;
@@ -381,8 +382,14 @@ function loadHoldings() {
   try {
     const saved = window.localStorage.getItem("focus-radar-holdings");
     const parsed = saved ? JSON.parse(saved) : null;
-    return Array.isArray(parsed) ? parsed : defaultHoldings.map((holding) => ({ ...holding }));
+    if (Array.isArray(parsed)) {
+      holdingsStorageSource = "local";
+      return parsed;
+    }
+    holdingsStorageSource = "default";
+    return defaultHoldings.map((holding) => ({ ...holding }));
   } catch {
+    holdingsStorageSource = "default";
     return defaultHoldings.map((holding) => ({ ...holding }));
   }
 }
@@ -392,6 +399,75 @@ function saveHoldings() {
     window.localStorage.setItem("focus-radar-holdings", JSON.stringify(holdings));
   } catch {
     // Local storage may be unavailable when the page is opened from a restricted file context.
+  }
+}
+
+function downloadHoldings() {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    holdings: holdings.map((holding) => ({ ...holding }))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "holdings.json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`已导出 ${holdings.length} 笔持仓`);
+}
+
+function parseHoldingsPayload(payload) {
+  const rows = Array.isArray(payload) ? payload : payload?.holdings;
+  if (!Array.isArray(rows)) throw new Error("文件中没有 holdings 数组");
+  const normalized = rows
+    .filter((holding) => holding && typeof holding === "object")
+    .map((holding, index) => ({
+      ...holding,
+      id: Number.isFinite(Number(holding.id)) ? Number(holding.id) : Date.now() + index,
+      name: String(holding.name || holding.code || "").trim(),
+      code: String(holding.code || holding.name || "").trim()
+    }))
+    .filter((holding) => holding.name && holding.code);
+  if (!normalized.length && rows.length) throw new Error("没有可识别的持仓记录");
+  return normalized;
+}
+
+function importHoldingsFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      holdings = parseHoldingsPayload(JSON.parse(String(reader.result || "")));
+      holdingsStorageSource = "imported";
+      saveHoldings();
+      renderAccountAll();
+      showToast(`已导入 ${holdings.length} 笔持仓`);
+    } catch (error) {
+      showToast(`导入失败：${error.message || "JSON 格式不正确"}`);
+    }
+  };
+  reader.onerror = () => showToast("导入失败：无法读取文件");
+  reader.readAsText(file);
+}
+
+async function loadRepositoryHoldings() {
+  if (holdingsStorageSource === "local") return;
+  try {
+    const response = await fetch(`./holdings.json?_=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const remoteHoldings = parseHoldingsPayload(payload);
+    holdings = remoteHoldings;
+    holdingsStorageSource = "repository";
+    saveHoldings();
+    renderAccountAll();
+    showToast(`已读取仓库持仓 ${holdings.length} 笔`);
+  } catch {
+    // The repository file is optional; defaults remain available when it is absent.
   }
 }
 
@@ -2007,6 +2083,14 @@ function bindEvents() {
   $("#accountRefreshButton").addEventListener("click", () => {
     refreshLiveMarketData({ manual: true });
   });
+  $("#exportHoldingsButton").addEventListener("click", downloadHoldings);
+  $("#importHoldingsButton").addEventListener("click", () => {
+    $("#holdingsFileInput").click();
+  });
+  $("#holdingsFileInput").addEventListener("change", (event) => {
+    importHoldingsFile(event.target.files?.[0]);
+    event.target.value = "";
+  });
   $$(".account-type-tab").forEach((button) => button.addEventListener("click", () => {
     $$(".nav-item").forEach((item) => item.classList.remove("is-active"));
     $$(".account-type-tab").forEach((item) => {
@@ -2138,6 +2222,7 @@ refreshTrendHistory({ force: true });
 refreshLiveMarketData({ refreshCrypto: true });
 refreshUsdCnyRate();
 refreshDividendData();
+loadRepositoryHoldings();
 dividendLastRefreshDate = getBeijingDate();
 setInterval(() => { if (state.live) refreshLiveMarketData({ refreshCrypto: true }); }, 5000);
 setInterval(() => { if (state.live) refreshUsdCnyRate(); }, 1800000);

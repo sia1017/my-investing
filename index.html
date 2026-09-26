@@ -339,6 +339,9 @@
               <div class="table-actions">
                 <span class="account-live-label"><span class="status-dot" id="accountStatusDot"></span><span id="accountDataSource">当前价自动刷新</span></span>
                 <button class="secondary-button compact-button" id="accountRefreshButton" type="button"><span aria-hidden="true">↻</span> 刷新</button>
+                <button class="secondary-button compact-button" id="exportHoldingsButton" type="button" title="下载当前全部账户持仓">导出持仓</button>
+                <button class="secondary-button compact-button" id="importHoldingsButton" type="button" title="从 JSON 文件恢复持仓">导入持仓</button>
+                <input id="holdingsFileInput" type="file" accept="application/json,.json" hidden />
               </div>
             </div>
             <div class="table-scroll">
