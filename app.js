@@ -86,7 +86,6 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 let toastTimer;
-let holdingsStorageSource = "default";
 let holdings = loadHoldings();
 let liveRefreshInFlight = false;
 let cryptoSocket = null;
@@ -382,14 +381,8 @@ function loadHoldings() {
   try {
     const saved = window.localStorage.getItem("focus-radar-holdings");
     const parsed = saved ? JSON.parse(saved) : null;
-    if (Array.isArray(parsed)) {
-      holdingsStorageSource = "local";
-      return parsed;
-    }
-    holdingsStorageSource = "default";
-    return defaultHoldings.map((holding) => ({ ...holding }));
+    return Array.isArray(parsed) ? parsed : defaultHoldings.map((holding) => ({ ...holding }));
   } catch {
-    holdingsStorageSource = "default";
     return defaultHoldings.map((holding) => ({ ...holding }));
   }
 }
@@ -442,7 +435,6 @@ function importHoldingsFile(file) {
   reader.onload = () => {
     try {
       holdings = parseHoldingsPayload(JSON.parse(String(reader.result || "")));
-      holdingsStorageSource = "imported";
       saveHoldings();
       renderAccountAll();
       showToast(`已导入 ${holdings.length} 笔持仓`);
@@ -452,22 +444,6 @@ function importHoldingsFile(file) {
   };
   reader.onerror = () => showToast("导入失败：无法读取文件");
   reader.readAsText(file);
-}
-
-async function loadRepositoryHoldings() {
-  try {
-    const response = await fetch(`./holdings.json?_=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) return;
-    const payload = await response.json();
-    const remoteHoldings = parseHoldingsPayload(payload);
-    holdings = remoteHoldings;
-    holdingsStorageSource = "repository";
-    saveHoldings();
-    renderAccountAll();
-    showToast(`已读取仓库持仓 ${holdings.length} 笔`);
-  } catch {
-    // The repository file is optional; defaults remain available when it is absent.
-  }
 }
 
 function escapeHtml(value) {
@@ -2214,7 +2190,6 @@ refreshTrendHistory({ force: true });
 refreshLiveMarketData({ refreshCrypto: true });
 refreshUsdCnyRate();
 refreshDividendData();
-loadRepositoryHoldings();
 
 if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
   window.addEventListener("load", () => {
