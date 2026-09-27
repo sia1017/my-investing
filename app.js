@@ -92,6 +92,7 @@ let cryptoSocket = null;
 let cryptoSocketRetryTimer = null;
 let cryptoStreamEndpointIndex = 0;
 let cryptoLastUpdatedAt = null;
+let cryptoLivePriceAvailable = false;
 let stockDataMode = "unavailable";
 let cryptoDataMode = "unavailable";
 let dividendEvents = filterWhitelistDividends(dividendSnapshot).map((event) => ({ ...event }));
@@ -1259,6 +1260,7 @@ function connectCryptoStream() {
       const rows = Array.isArray(parsed) ? parsed : [parsed];
       if (rows.some((row) => applyCryptoTicker(row))) {
         cryptoLastUpdatedAt = new Date();
+        cryptoLivePriceAvailable = true;
         renderCryptoAll({ updated: true });
         renderAccountAll();
         updateMarketStatus();
@@ -1317,7 +1319,10 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
     : loadCryptoQuotes()
       .then((quotes) => {
         cryptoUpdated = applyCryptoQuotes(quotes) > 0;
-        if (cryptoUpdated) cryptoLastUpdatedAt = new Date();
+        if (cryptoUpdated) {
+          cryptoLastUpdatedAt = new Date();
+          cryptoLivePriceAvailable = true;
+        }
         cryptoDataMode = cryptoUpdated ? "live" : "unavailable";
         renderCryptoAll({ updated: true });
         renderAccountAll();
@@ -1332,8 +1337,11 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
   }
   if (shouldRefreshCrypto && !cryptoUpdated) {
     cryptoDataMode = "unavailable";
+    cryptoLivePriceAvailable = false;
     setStatus("cryptoStatusDot", "cryptoStatusText", "实时接口不可用", "warning");
-    $("#cryptoDataSource").textContent = isFilePage ? "请用 node server.mjs 打开" : "接口不可用 · 可手动重试";
+    $("#cryptoDataSource").textContent = isFilePage
+      ? "请用 node server.mjs 打开"
+      : "手机直连行情不可用 · 最新价暂不显示";
   }
   renderAll();
   if (shouldRefreshCrypto) {
@@ -1667,7 +1675,7 @@ function renderCryptoTable() {
   $("#cryptoTableBody").innerHTML = visible.map((asset) => `
     <tr data-crypto-symbol="${asset.symbol}" class="${asset.symbol === state.cryptoSymbol ? "is-selected" : ""}">
       <td><span class="stock-name">${asset.name}</span><span class="crypto-symbol">${asset.symbol}</span></td>
-      <td class="crypto-price">${formatCryptoPrice(asset.price)}</td>
+      <td class="crypto-price">${cryptoLivePriceAvailable ? formatCryptoPrice(asset.price) : "—"}</td>
       <td class="${asset.change24 >= 0 ? "crypto-change-positive" : "crypto-change-negative"}">${asset.change24 >= 0 ? "+" : ""}${formatNumber(asset.change24)}%</td>
       <td class="${asset.change7 >= 0 ? "crypto-change-positive" : "crypto-change-negative"}">${asset.change7 >= 0 ? "+" : ""}${formatNumber(asset.change7)}%</td>
       <td>${formatNumber(asset.volatility)}%</td>
