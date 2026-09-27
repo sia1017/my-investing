@@ -1000,6 +1000,32 @@ async function loadCryptoQuotes() {
   const coingeckoIdParam = coingeckoRequested.map((symbol) => coingeckoIds[symbol]).join(",");
   const providers = [
     {
+      endpoints: ["coinbase-exchange"],
+      async fetchQuotes() {
+        const results = await Promise.allSettled(symbols.map(async (symbol) => {
+          const product = `${symbol.replace(/USDT$/, "")}-USD`;
+          const response = await fetch(`https://api.exchange.coinbase.com/products/${product}/ticker?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { Accept: "application/json" }
+          });
+          if (!response.ok) throw new Error(`Coinbase Exchange ${product} HTTP ${response.status}`);
+          const payload = await response.json();
+          const price = Number(payload?.price);
+          if (!Number.isFinite(price) || price <= 0) return null;
+          return {
+            s: symbol,
+            c: String(price),
+            o: String(payload?.price || price),
+            P: "0",
+            q: String(payload?.volume || 0)
+          };
+        }));
+        return results
+          .filter((result) => result.status === "fulfilled" && result.value)
+          .map((result) => result.value);
+      }
+    },
+    {
       endpoints: ["coinbase-spot"],
       async fetchQuotes() {
         const results = await Promise.allSettled(symbols.map(async (symbol) => {
@@ -2266,11 +2292,25 @@ refreshDividendData();
 
 if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {
-      // PWA caching is optional; the live dashboard continues without it.
-    });
+    navigator.serviceWorker.register(`./sw.js?v=${Date.now()}`)
+      .then((registration) => registration.update())
+      .catch(() => {
+        // PWA caching is optional; the live dashboard continues without it.
+      });
   });
 }
+
+window.addEventListener("online", () => {
+  if (state.live) refreshLiveMarketData({ refreshCrypto: true });
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.live) {
+    refreshLiveMarketData({ refreshCrypto: true });
+    connectCryptoStream();
+  }
+});
+
 dividendLastRefreshDate = getBeijingDate();
 setInterval(() => { if (state.live) refreshLiveMarketData({ refreshCrypto: true }); }, 5000);
 setInterval(() => { if (state.live) refreshUsdCnyRate(); }, 1800000);
