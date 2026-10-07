@@ -321,8 +321,7 @@ function renderDividendAll() {
   const filtered = dividendEvents
     .filter((event) => state.dividendProgress === "all" || event.progress === state.dividendProgress)
     .sort((a, b) => a.date.localeCompare(b.date));
-  $("#dividendCount").textContent = String(filtered.length);
-  $("#dividendTableBody").innerHTML = filtered.length ? filtered.map((event) => {
+  const rowsHtml = filtered.length ? filtered.map((event) => {
     const progressClass = event.progress === "实施分配" ? "is-complete" : "is-pending";
     return `
       <tr>
@@ -335,16 +334,31 @@ function renderDividendAll() {
         <td class="dividend-scheme">${escapeHtml(event.scheme)}</td>
       </tr>`;
   }).join("") : `<tr><td colspan="7" class="empty-state">当前筛选条件下没有分红记录。</td></tr>`;
-  $("#dividendLastUpdated").textContent = formatTime(dividendUpdatedAt);
+  $("#dividendCount").textContent = String(filtered.length);
+  $("#dividendTableBody").innerHTML = rowsHtml;
   const sourceLabel = dividendDataMode === "remote"
     ? "东方财富公开数据 · 今日已更新"
     : dividendDataMode === "cache"
       ? "今日已更新 · 使用本地缓存"
       : "远程接口不可用 · 使用本地快照";
-  $("#dividendDataSource").textContent = sourceLabel;
-  $("#dividendFooterSource").textContent = sourceLabel;
   const rangeStart = dividendDataMode === "snapshot" ? dividendSnapshot[0].date : getBeijingDate();
-  $("#dividendDateRange").textContent = `覆盖 ${rangeStart} 至 ${addMonths(rangeStart, 6)}`;
+  const rangeLabel = `覆盖 ${rangeStart} 至 ${addMonths(rangeStart, 6)}`;
+  [
+    ["dividendLastUpdated", formatTime(dividendUpdatedAt)],
+    ["dividendDataSource", sourceLabel],
+    ["dividendFooterSource", sourceLabel],
+    ["dividendDateRange", rangeLabel],
+    ["accountDividendCount", String(filtered.length)],
+    ["accountDividendLastUpdated", formatTime(dividendUpdatedAt)],
+    ["accountDividendDataSource", sourceLabel],
+    ["accountDividendFooterSource", sourceLabel],
+    ["accountDividendDateRange", rangeLabel]
+  ].forEach(([id, text]) => {
+    const element = $(`#${id}`);
+    if (element) element.textContent = text;
+  });
+  const accountDividendTableBody = $("#accountDividendTableBody");
+  if (accountDividendTableBody) accountDividendTableBody.innerHTML = rowsHtml;
 }
 
 async function refreshDividendData({ force = false, manual = false } = {}) {

@@ -365,6 +365,42 @@
               </table>
             </div>
           </section>
+
+          <section class="panel dividend-panel account-dividend-calendar">
+            <div class="panel-heading dividend-heading">
+              <div>
+                <p class="panel-kicker">近期派息</p>
+                <h2>半年内即将分红</h2>
+                <p class="dividend-subtitle">按除权除息日正序 · 条数：<strong id="accountDividendCount">0</strong></p>
+              </div>
+              <div class="live-clock dividend-clock">
+                <span class="live-pulse"></span>
+                <span>每日更新</span>
+                <strong id="accountDividendLastUpdated">--:--:--</strong>
+                <small id="accountDividendDataSource">等待分红数据</small>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="opportunity-table dividend-table">
+                <thead>
+                  <tr>
+                    <th>除权除息日</th>
+                    <th>股票</th>
+                    <th>代码</th>
+                    <th>每股派现</th>
+                    <th>股息率</th>
+                    <th>进度</th>
+                    <th>方案</th>
+                  </tr>
+                </thead>
+                <tbody id="accountDividendTableBody"></tbody>
+              </table>
+            </div>
+            <div class="table-footer dividend-footer">
+              <span id="accountDividendDateRange">覆盖未来 6 个月</span>
+              <span class="table-footer-note" id="accountDividendFooterSource">数据源连接中</span>
+            </div>
+          </section>
         </div>
       </main>
 

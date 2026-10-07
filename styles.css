@@ -416,6 +416,8 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .account-live-label { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .account-live-label .status-dot { width: 6px; height: 6px; box-shadow: 0 0 0 3px var(--green-soft); }
 .account-holdings-panel { overflow: hidden; }
+.account-dividend-calendar { display: none; margin-top: 10px; overflow: hidden; }
+#accountView.is-stock-account .account-dividend-calendar { display: block; }
 .account-table { min-width: 1260px; }
 #accountView.is-stock-account .account-table {
   min-width: 1080px;
