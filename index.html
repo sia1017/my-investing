@@ -20,7 +20,7 @@
         </div>
 
         <nav class="main-nav" aria-label="主导航">
-          <button class="nav-item" data-view="calendar">分红日历</button>
+          <button class="nav-item" data-view="calendar">股票监控</button>
           <button class="nav-item" data-view="crypto">虚拟币</button>
           <button class="nav-item" data-view="overview">红利股票</button>
           <div class="account-type-tabs" role="tablist" aria-label="账户类型">
@@ -206,48 +206,71 @@
         </div>
 
         <div id="dividendView" class="view-section">
-          <section class="panel dividend-panel">
-            <div class="panel-heading dividend-heading">
+          <section class="metric-grid stock-monitor-metrics" aria-label="股票监控指标">
+            <article class="metric-card">
+              <div class="metric-label">监控股票</div>
+              <div class="metric-value"><span id="monitorMetricTotal">0</span><small> 只</small></div>
+              <div class="metric-meta neutral">红利池动态跟踪</div>
+            </article>
+            <article class="metric-card metric-card-alert">
+              <div class="metric-label">已到首仓价</div>
+              <div class="metric-value"><span id="monitorMetricTriggered">0</span><small> 只</small></div>
+              <div class="metric-meta alert">优先关注</div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">平均股息率</div>
+              <div class="metric-value"><span id="monitorMetricYield">0.00</span><small>%</small></div>
+              <div class="metric-meta positive">按当前价计算</div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">接近首仓</div>
+              <div class="metric-value"><span id="monitorMetricNear">0</span><small> 只</small></div>
+              <div class="metric-meta neutral">需跌幅 5% 内</div>
+            </article>
+          </section>
+
+          <section class="panel stock-monitor-panel">
+            <div class="panel-heading table-heading">
               <div>
-                <p class="panel-kicker">近期派息</p>
-                <h2>半年内即将分红</h2>
-                <p class="dividend-subtitle">按除权除息日正序 · 条数：<strong id="dividendCount">0</strong></p>
-              </div>
-              <div class="live-clock dividend-clock">
-                <span class="live-pulse"></span>
-                <span>每日更新</span>
-                <strong id="dividendLastUpdated">--:--:--</strong>
-                <small id="dividendDataSource">等待分红数据</small>
+                <p class="panel-kicker">股票监控</p>
+                <h2>红利股票监控榜</h2>
               </div>
               <div class="table-actions">
-                <select id="dividendProgressFilter" aria-label="筛选分红进度">
-                  <option value="all">全部进度</option>
-                  <option value="实施分配">实施分配</option>
-                  <option value="股东大会通过">股东大会通过</option>
-                  <option value="董事会决议通过">董事会决议通过</option>
+                <label class="search-box">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="stockMonitorSearchInput" type="search" placeholder="搜索名称 / 代码" autocomplete="off" />
+                </label>
+                <select id="stockMonitorSectorFilter" aria-label="筛选股票监控行业">
+                  <option value="all">全部行业</option>
                 </select>
-                <button class="secondary-button compact-button" id="dividendRefreshButton" type="button"><span aria-hidden="true">↻</span> 更新</button>
+                <label class="switch-control">
+                  <input id="stockMonitorWhitelistToggle" type="checkbox" checked />
+                  <span class="switch" aria-hidden="true"></span>
+                  <span>仅白名单</span>
+                </label>
               </div>
             </div>
+            <div class="table-meta">
+              <span id="stockMonitorSummary">显示 0 个标的</span>
+              <span class="table-note" id="stockMonitorSource">价格每 5 秒更新 · 按首仓价距离排序</span>
+            </div>
             <div class="table-scroll">
-              <table class="opportunity-table dividend-table">
+              <table class="opportunity-table stock-monitor-table">
                 <thead>
                   <tr>
-                    <th>除权除息日</th>
+                    <th>状态</th>
                     <th>股票</th>
-                    <th>代码</th>
-                    <th>每股派现</th>
-                    <th>股息率</th>
-                    <th>进度</th>
-                    <th>方案</th>
+                    <th>现价</th>
+                    <th>涨跌</th>
+                    <th>当前股息率</th>
+                    <th>需跌幅</th>
+                    <th>首仓价</th>
+                    <th>加仓价</th>
+                    <th>重仓价</th>
                   </tr>
                 </thead>
-                <tbody id="dividendTableBody"></tbody>
+                <tbody id="stockMonitorTableBody"></tbody>
               </table>
-            </div>
-            <div class="table-footer dividend-footer">
-              <span id="dividendDateRange">覆盖未来 6 个月</span>
-              <span class="table-footer-note" id="dividendFooterSource">数据源连接中</span>
             </div>
           </section>
         </div>

@@ -532,6 +532,24 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .dividend-progress.is-pending { color: var(--amber); }
 .dividend-scheme { color: var(--ink); white-space: nowrap; }
 .dividend-footer { border-top: 1px solid var(--line); }
+.stock-monitor-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 10px; }
+.stock-monitor-panel { overflow: hidden; }
+.stock-monitor-table { min-width: 980px; }
+.stock-monitor-table th:first-child,
+.stock-monitor-table td:first-child { width: 86px; }
+.monitor-status {
+  display: inline-flex;
+  min-width: 50px;
+  justify-content: center;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 750;
+}
+.monitor-status.is-add,
+.monitor-status.is-first { color: var(--red); background: var(--red-soft); }
+.monitor-status.is-near { color: var(--amber); background: var(--amber-soft); }
+.monitor-status.is-watch { color: var(--green); background: var(--green-soft); }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .panel-heading h2 { margin: 0; font-size: 16px; letter-spacing: 0; }
 .panel-count { color: var(--muted); font-size: 12px; padding-top: 4px; }

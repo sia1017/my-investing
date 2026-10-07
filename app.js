@@ -76,6 +76,9 @@ const state = {
   expandedCryptoSymbol: null,
   cryptoSearch: "",
   cryptoSignal: "all",
+  monitorSearch: "",
+  monitorSector: "all",
+  monitorWhitelist: true,
   accountType: "stock",
   accountFormMarket: null,
   editingHoldingId: null,
@@ -1411,12 +1414,102 @@ function getVisibleStocks() {
 function renderOptions() {
   const sectors = [...new Set(stocks.map((stock) => stock.sector))];
   $("#sectorFilter").insertAdjacentHTML("beforeend", sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join(""));
+  const monitorSectorFilter = $("#stockMonitorSectorFilter");
+  if (monitorSectorFilter) {
+    monitorSectorFilter.insertAdjacentHTML("beforeend", sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join(""));
+  }
   const trendStocks = stocks;
   const trendSelect = $("#trendStockSelect");
   if (trendSelect) {
     trendSelect.innerHTML = trendStocks.map((stock) => `<option value="${stock.code}">${stock.name} · ${stock.code}</option>`).join("");
     trendSelect.value = state.selectedCode;
   }
+}
+
+function getStockMonitorStatus(stock) {
+  const price = Number(stock.price) || 0;
+  const first = Number(stock.first) || 0;
+  const add = Number(stock.add) || 0;
+  if (add > 0 && price <= add) return { label: "加仓区", className: "is-add" };
+  if (first > 0 && price <= first) return { label: "首仓区", className: "is-first" };
+  const drawdownToFirst = first > 0 && price > first ? (price - first) / price * 100 : 0;
+  if (drawdownToFirst > 0 && drawdownToFirst <= 5) return { label: "接近", className: "is-near" };
+  return { label: "观察", className: "is-watch" };
+}
+
+function getMonitorDrawdownToFirst(stock) {
+  const price = Number(stock.price) || 0;
+  const first = Number(stock.first) || 0;
+  if (!price || !first || price <= first) return 0;
+  return (price - first) / price * 100;
+}
+
+function getVisibleMonitorStocks() {
+  const query = state.monitorSearch.trim().toLowerCase();
+  return stocks
+    .filter((stock) => {
+      const matchesQuery = !query || `${stock.name}${stock.code}${stock.sector}${stock.sub}`.toLowerCase().includes(query);
+      const matchesSector = state.monitorSector === "all" || stock.sector === state.monitorSector;
+      const matchesWhitelist = !state.monitorWhitelist || stock.whitelist;
+      return matchesQuery && matchesSector && matchesWhitelist;
+    })
+    .sort((a, b) => {
+      const statusRank = { "is-add": 0, "is-first": 1, "is-near": 2, "is-watch": 3 };
+      const rankA = statusRank[getStockMonitorStatus(a).className] ?? 9;
+      const rankB = statusRank[getStockMonitorStatus(b).className] ?? 9;
+      if (rankA !== rankB) return rankA - rankB;
+      return getMonitorDrawdownToFirst(a) - getMonitorDrawdownToFirst(b);
+    });
+}
+
+function renderStockMonitor() {
+  const visible = getVisibleMonitorStocks();
+  const triggered = visible.filter((stock) => Number(stock.price) <= Number(stock.first)).length;
+  const near = visible.filter((stock) => {
+    const drawdown = getMonitorDrawdownToFirst(stock);
+    return drawdown > 0 && drawdown <= 5;
+  }).length;
+  const averageYield = visible.length
+    ? visible.reduce((sum, stock) => sum + getStockCurrentYield(stock), 0) / visible.length
+    : 0;
+  const metricMap = {
+    monitorMetricTotal: String(visible.length),
+    monitorMetricTriggered: String(triggered),
+    monitorMetricYield: formatNumber(averageYield),
+    monitorMetricNear: String(near),
+    stockMonitorSummary: `显示 ${visible.length} 个标的`
+  };
+  Object.entries(metricMap).forEach(([id, text]) => {
+    const element = $(`#${id}`);
+    if (element) element.textContent = text;
+  });
+  const source = $("#stockMonitorSource");
+  if (source) {
+    source.textContent = stockDataMode === "live"
+      ? "价格每 5 秒更新 · 按首仓价距离排序"
+      : "使用本地快照 · 按首仓价距离排序";
+  }
+  const body = $("#stockMonitorTableBody");
+  if (!body) return;
+  body.innerHTML = visible.map((stock) => {
+    const status = getStockMonitorStatus(stock);
+    const price = Number(stock.price) || 0;
+    const prev = Number(stock.prev) || price;
+    const change = prev > 0 ? (price / prev - 1) * 100 : 0;
+    const drawdown = getMonitorDrawdownToFirst(stock);
+    return `
+      <tr>
+        <td><span class="monitor-status ${status.className}">${status.label}</span></td>
+        <td><span class="stock-name">${escapeHtml(stock.name)}</span><span class="stock-code">${escapeHtml(stock.code)} · ${escapeHtml(stock.sector || "")}${stock.sub ? ` / ${escapeHtml(stock.sub)}` : ""}</span></td>
+        <td class="price-cell">${formatNumber(stock.price)}</td>
+        <td class="${change >= 0 ? "positive-value" : "negative-value"}">${change >= 0 ? "+" : ""}${formatNumber(change)}%</td>
+        <td>${formatNumber(getStockCurrentYield(stock))}%</td>
+        <td class="${drawdown === 0 ? "positive-value" : "drawdown-cell"}">${formatNumber(drawdown)}%</td>
+        <td class="target-cell"><strong>${formatNumber(stock.first)}</strong></td>
+        <td class="target-cell ${price <= Number(stock.add) ? "is-triggered" : ""}"><strong>${formatNumber(stock.add)}</strong></td>
+        <td class="target-cell ${price <= Number(stock.heavy) ? "is-triggered" : ""}"><strong>${formatNumber(stock.heavy)}</strong></td>
+      </tr>`;
+  }).join("") || `<tr><td colspan="9" class="empty-state">没有符合条件的股票。</td></tr>`;
 }
 
 function renderMetrics() {
@@ -2030,6 +2123,7 @@ function renderAll() {
   renderTrendChart();
   renderSectorChart();
   renderTable();
+  renderStockMonitor();
   renderCryptoAll();
   renderDividendAll();
   renderAccountAll();
@@ -2159,13 +2253,40 @@ function bindEvents() {
     renderCryptoSignals();
     renderCryptoTable();
   });
-  $("#dividendProgressFilter").addEventListener("change", (event) => {
-    state.dividendProgress = event.target.value;
-    renderDividendAll();
-  });
-  $("#dividendRefreshButton").addEventListener("click", () => {
-    refreshDividendData({ force: true, manual: true });
-  });
+  const monitorSearchInput = $("#stockMonitorSearchInput");
+  if (monitorSearchInput) {
+    monitorSearchInput.addEventListener("input", (event) => {
+      state.monitorSearch = event.target.value;
+      renderStockMonitor();
+    });
+  }
+  const monitorSectorFilter = $("#stockMonitorSectorFilter");
+  if (monitorSectorFilter) {
+    monitorSectorFilter.addEventListener("change", (event) => {
+      state.monitorSector = event.target.value;
+      renderStockMonitor();
+    });
+  }
+  const monitorWhitelistToggle = $("#stockMonitorWhitelistToggle");
+  if (monitorWhitelistToggle) {
+    monitorWhitelistToggle.addEventListener("change", (event) => {
+      state.monitorWhitelist = event.target.checked;
+      renderStockMonitor();
+    });
+  }
+  const dividendProgressFilter = $("#dividendProgressFilter");
+  if (dividendProgressFilter) {
+    dividendProgressFilter.addEventListener("change", (event) => {
+      state.dividendProgress = event.target.value;
+      renderDividendAll();
+    });
+  }
+  const dividendRefreshButton = $("#dividendRefreshButton");
+  if (dividendRefreshButton) {
+    dividendRefreshButton.addEventListener("click", () => {
+      refreshDividendData({ force: true, manual: true });
+    });
+  }
   $("#accountTargetInput").addEventListener("input", updateAccountFormPreview);
   $("#accountTargetInput").addEventListener("change", updateAccountFormPreview);
   $("#accountDividendInput").addEventListener("input", updateAccountFormPreview);
