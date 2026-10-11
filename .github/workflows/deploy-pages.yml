@@ -26,6 +26,7 @@ jobs:
           node --check app.js
           node --check server.mjs
           node --check stock-data.js
+          node --check stock-monitor-data.js
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -33,7 +34,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p _site
-          cp index.html styles.css app.js stock-data.js manifest.webmanifest sw.js icon.svg _site/
+          cp index.html styles.css app.js stock-data.js stock-monitor-data.js manifest.webmanifest sw.js icon.svg _site/
           touch _site/.nojekyll
 
       - name: Upload Pages artifact
