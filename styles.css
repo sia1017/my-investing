@@ -282,9 +282,20 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .crypto-market-pill small { grid-column: 2; color: var(--muted-2); font-size: 9px; }
 
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-.overview-metric-grid,
+.overview-metric-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 .crypto-metric-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-.overview-metric-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.overview-metric-grid .live-clock-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: center;
+  gap: 2px 8px;
+}
+.overview-metric-grid .live-clock-card .live-pulse { grid-row: auto; }
+.overview-metric-grid .live-clock-card strong,
+.overview-metric-grid .live-clock-card small {
+  grid-column: 2;
+  white-space: nowrap;
+}
 .metric-card {
   min-height: 128px;
   padding: 19px 20px;
@@ -532,24 +543,59 @@ h1 { max-width: 760px; margin-bottom: 9px; font-size: clamp(26px, 3vw, 40px); li
 .dividend-progress.is-pending { color: var(--amber); }
 .dividend-scheme { color: var(--ink); white-space: nowrap; }
 .dividend-footer { border-top: 1px solid var(--line); }
-.stock-monitor-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 10px; }
-.stock-monitor-panel { overflow: hidden; }
-.stock-monitor-table { min-width: 980px; }
-.stock-monitor-table th:first-child,
-.stock-monitor-table td:first-child { width: 86px; }
-.monitor-status {
-  display: inline-flex;
-  min-width: 50px;
-  justify-content: center;
-  padding: 3px 7px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 750;
+.stock-monitor-clock {
+  min-width: 0;
 }
-.monitor-status.is-add,
-.monitor-status.is-first { color: var(--red); background: var(--red-soft); }
-.monitor-status.is-near { color: var(--amber); background: var(--amber-soft); }
-.monitor-status.is-watch { color: var(--green); background: var(--green-soft); }
+.stock-monitor-clock strong { font-size: 15px; }
+.stock-monitor-clock small { white-space: nowrap; }
+.stock-monitor-metrics { grid-template-columns: repeat(7, minmax(0, 1fr)); margin-bottom: 10px; }
+.stock-monitor-panel { overflow: hidden; }
+.stock-monitor-table { min-width: 820px; }
+.stock-monitor-table th:first-child,
+.stock-monitor-table td:first-child { width: 190px; }
+.stock-monitor-table th:nth-child(2),
+.stock-monitor-table td:nth-child(2) { width: 150px; }
+.stock-monitor-table th:nth-child(3),
+.stock-monitor-table td:nth-child(3),
+.stock-monitor-table th:nth-child(4),
+.stock-monitor-table td:nth-child(4),
+.stock-monitor-table th:nth-child(5),
+.stock-monitor-table td:nth-child(5),
+.stock-monitor-table th:nth-child(6),
+.stock-monitor-table td:nth-child(6) {
+  text-align: right;
+  white-space: nowrap;
+}
+.stock-monitor-aonly { min-height: 34px; }
+.monitor-satellite {
+  display: inline-flex;
+  width: 21px;
+  height: 21px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  color: var(--blue);
+  font-size: 17px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.monitor-group-row td {
+  padding: 10px 14px !important;
+  border-top: 1px solid var(--line-strong);
+  background: var(--surface-soft);
+}
+.monitor-group-title {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+.monitor-group-count {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.stock-monitor-footer { border-top: 1px solid var(--line); }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .panel-heading h2 { margin: 0; font-size: 16px; letter-spacing: 0; }
 .panel-count { color: var(--muted); font-size: 12px; padding-top: 4px; }
@@ -779,6 +825,7 @@ select:focus, input:focus { border-color: var(--green); }
   .account-summary-strip { grid-template-columns: 150px minmax(0, 1fr); }
   .account-metric-grid .metric-card { padding-left: 12px; padding-right: 12px; }
   .account-metric-grid .metric-value { font-size: 21px; }
+  .stock-monitor-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -811,6 +858,10 @@ select:focus, input:focus { border-color: var(--green); }
   .account-form-actions { grid-column: 1 / -1; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-metric-grid .live-clock-card small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .metric-card { min-height: 116px; padding: 15px; }
   .inline-stock-detail-inner { grid-template-columns: 1fr; padding: 10px; }
   .inline-stock-detail-heading { align-items: flex-start; flex-direction: column; }
@@ -831,6 +882,8 @@ select:focus, input:focus { border-color: var(--green); }
   .table-meta, .table-footer { padding-left: 16px; padding-right: 16px; }
   .table-note, .table-footer-note { display: none; }
   .app-footer { padding: 0 14px 18px; flex-direction: column; gap: 4px; }
+  .stock-monitor-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stock-monitor-table { min-width: 860px; }
 }
 
 @media (max-width: 430px) {

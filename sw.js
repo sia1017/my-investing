@@ -1,10 +1,11 @@
-const CACHE_NAME = "sia-investing-shell-v3";
+const CACHE_NAME = "sia-investing-shell-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./stock-data.js",
+  "./stock-monitor-data.js",
   "./manifest.webmanifest",
   "./icon.svg"
 ];

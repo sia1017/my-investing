@@ -22,16 +22,16 @@
         <nav class="main-nav" aria-label="主导航">
           <button class="nav-item" data-view="crypto">虚拟币</button>
           <button class="nav-item" data-view="overview">红利股票</button>
-          <button class="nav-item" data-view="calendar">股票监控</button>
+          <button class="nav-item is-active" data-view="calendar">股票监控</button>
           <div class="account-type-tabs" role="tablist" aria-label="账户类型">
-            <button class="account-type-tab is-active" type="button" data-account-type="stock" role="tab" aria-selected="true">
-              <span>股票账户</span><small>人民币 · 红利股票</small>
+            <button class="account-type-tab" type="button" data-account-type="stock" role="tab" aria-selected="false">
+              <span>股票账户</span><small>人民币 · 股票</small>
+            </button>
+            <button class="account-type-tab" type="button" data-account-type="fixed" role="tab" aria-selected="false">
+              <span>现金账户</span><small>人民币 · 活期</small>
             </button>
             <button class="account-type-tab" type="button" data-account-type="crypto" role="tab" aria-selected="false">
               <span>美元账户</span><small>美元 · BTC / SOL / ETH</small>
-            </button>
-            <button class="account-type-tab" type="button" data-account-type="fixed" role="tab" aria-selected="false">
-              <span>固定账户</span><small>人民币 · 定期 / 现金 / 债券</small>
             </button>
           </div>
         </nav>
@@ -50,15 +50,15 @@
             <span class="live-pulse"></span>
             <span>实时价格</span>
             <strong id="lastUpdated">--:--:--</strong>
-            <small id="stockDataSource">等待股票行情</small>
+            <small id="stockDataSource"></small>
           </article>
           <article class="metric-card">
-            <div class="metric-label">跟踪标的</div>
+            <div class="metric-label">标的总数</div>
             <div class="metric-value" id="metricTracked">76</div>
             <div class="metric-meta positive">↑ 4.2% <span>较上月</span></div>
           </article>
           <article class="metric-card">
-            <div class="metric-label">组合平均股息率</div>
+            <div class="metric-label">白名单标的</div>
             <div class="metric-value"><span id="metricYield">4.58</span><small>%</small></div>
             <div class="metric-meta positive">↑ 0.18% <span>近 30 日</span></div>
           </article>
@@ -205,77 +205,97 @@
           </section>
         </div>
 
-        <div id="dividendView" class="view-section">
+        <div id="dividendView" class="view-section is-active">
           <section class="metric-grid stock-monitor-metrics" aria-label="股票监控指标">
+            <article class="metric-card live-clock-card stock-monitor-clock">
+              <span class="live-pulse"></span>
+              <span>实时价格</span>
+              <strong id="stockMonitorLastUpdated">--:--:--</strong>
+              <small id="stockMonitorDataSource"></small>
+            </article>
             <article class="metric-card">
-              <div class="metric-label">监控股票</div>
-              <div class="metric-value"><span id="monitorMetricTotal">0</span><small> 只</small></div>
-              <div class="metric-meta neutral">红利池动态跟踪</div>
+              <div class="metric-label">已跌破买入价</div>
+              <div class="metric-value"><span id="monitorMetricBelow">0</span><small> 只</small></div>
+              <div class="metric-meta alert">现价低于首仓价</div>
             </article>
             <article class="metric-card metric-card-alert">
-              <div class="metric-label">已到首仓价</div>
-              <div class="metric-value"><span id="monitorMetricTriggered">0</span><small> 只</small></div>
-              <div class="metric-meta alert">优先关注</div>
+              <div class="metric-label">需跌0-5%</div>
+              <div class="metric-value"><span id="monitorMetricNear5">0</span><small> 只</small></div>
+              <div class="metric-meta neutral">接近</div>
             </article>
             <article class="metric-card">
-              <div class="metric-label">平均股息率</div>
-              <div class="metric-value"><span id="monitorMetricYield">0.00</span><small>%</small></div>
-              <div class="metric-meta positive">按当前价计算</div>
+              <div class="metric-label">需跌5-10%</div>
+              <div class="metric-value"><span id="monitorMetricNear10">0</span><small> 只</small></div>
+              <div class="metric-meta neutral">中等</div>
             </article>
             <article class="metric-card">
-              <div class="metric-label">接近首仓</div>
-              <div class="metric-value"><span id="monitorMetricNear">0</span><small> 只</small></div>
-              <div class="metric-meta neutral">需跌幅 5% 内</div>
+              <div class="metric-label">需跌&gt;10%</div>
+              <div class="metric-value"><span id="monitorMetricFar">0</span><small> 只</small></div>
+              <div class="metric-meta neutral">较远</div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">平均需跌幅</div>
+              <div class="metric-value"><span id="monitorMetricAvgDrop">0.00</span><small>%</small></div>
+              <div class="metric-meta neutral">到首仓价距离</div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">平均 ROE</div>
+              <div class="metric-value"><span id="monitorMetricAvgRoe">0.00</span><small>%</small></div>
+              <div class="metric-meta positive">盈利质量参考</div>
             </article>
           </section>
 
           <section class="panel stock-monitor-panel">
             <div class="panel-heading table-heading">
-              <div>
-                <p class="panel-kicker">股票监控</p>
-                <h2>红利股票监控榜</h2>
-              </div>
               <div class="table-actions">
                 <label class="search-box">
                   <span aria-hidden="true">⌕</span>
-                  <input id="stockMonitorSearchInput" type="search" placeholder="搜索名称 / 代码" autocomplete="off" />
+                  <input id="stockMonitorSearchInput" type="search" placeholder="🔍 搜索名称/代码/分类..." autocomplete="off" />
                 </label>
-                <select id="stockMonitorSectorFilter" aria-label="筛选股票监控行业">
-                  <option value="all">全部行业</option>
-                </select>
-                <label class="switch-control">
-                  <input id="stockMonitorWhitelistToggle" type="checkbox" checked />
+                <label class="switch-control stock-monitor-aonly">
+                  <input id="stockMonitorAOnlyToggle" type="checkbox" />
                   <span class="switch" aria-hidden="true"></span>
-                  <span>仅白名单</span>
+                  <span>只显示 A股</span>
                 </label>
+                <select id="stockMonitorCategoryFilter" aria-label="筛选股票监控分类">
+                  <option value="">全部分类</option>
+                </select>
+                <select id="stockMonitorDropFilter" aria-label="筛选需跌幅">
+                  <option value="">全部跌幅</option>
+                  <option value="below">已跌破买入价</option>
+                  <option value="0-5">需跌0-5%</option>
+                  <option value="5-10">需跌5-10%</option>
+                  <option value="10+">需跌10%以上</option>
+                </select>
               </div>
             </div>
             <div class="table-meta">
               <span id="stockMonitorSummary">显示 0 个标的</span>
-              <span class="table-note" id="stockMonitorSource">价格每 5 秒更新 · 按首仓价距离排序</span>
+              <span class="table-note" id="stockMonitorSource">实时行情 · 按需跌幅排序</span>
             </div>
             <div class="table-scroll">
               <table class="opportunity-table stock-monitor-table">
                 <thead>
                   <tr>
-                    <th>状态</th>
                     <th>股票</th>
-                    <th>现价</th>
-                    <th>涨跌</th>
-                    <th>当前股息率</th>
-                    <th>需跌幅</th>
+                    <th>分类</th>
                     <th>首仓价</th>
-                    <th>加仓价</th>
-                    <th>重仓价</th>
+                    <th>现价</th>
+                    <th>需跌幅 ↓</th>
+                    <th>ROE%</th>
                   </tr>
                 </thead>
                 <tbody id="stockMonitorTableBody"></tbody>
               </table>
             </div>
+            <div class="table-footer stock-monitor-footer">
+              <span>数据仅供参考，投资有风险，入市需谨慎</span>
+              <span class="table-footer-note">按现价到首仓价的距离分组</span>
+            </div>
           </section>
         </div>
 
-        <div id="accountView" class="view-section is-active">
+        <div id="accountView" class="view-section">
           <section class="account-summary-strip" aria-label="账户汇总">
             <div class="live-clock account-sync-card">
               <span class="live-pulse"></span>
@@ -308,6 +328,37 @@
                 <div class="metric-value"><span id="accountEquivalentValue">0.00</span><small>¥</small></div>
                 <div class="metric-meta neutral account-exchange-note">美元汇率：<span id="accountExchangeRate">7.2000</span><span id="accountExchangeMeta">实时汇率</span></div>
               </article>
+            </div>
+          </section>
+
+          <section class="panel account-holdings-panel">
+            <div class="panel-heading table-heading">
+              <div>
+                <p class="panel-kicker">持仓明细 <span id="accountTableSummary"></span></p>
+              </div>
+              <div class="table-actions">
+                <span class="account-live-label"><span class="status-dot" id="accountStatusDot"></span><span id="accountDataSource">当前价自动刷新</span></span>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="opportunity-table account-table">
+                <thead>
+                  <tr>
+                    <th>标的</th>
+                    <th id="accountBuyPriceHeader">买入价</th>
+                    <th id="accountTotalHeader">买入总价</th>
+                    <th id="accountCurrentPriceHeader">当前价</th>
+                    <th id="accountQuantityHeader">数量</th>
+                    <th id="accountProfitRateHeader">收益率</th>
+                    <th>收益</th>
+                    <th class="account-dividend-only">当前股息率</th>
+                    <th class="account-dividend-only">每年分红</th>
+                    <th>备注</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="accountTableBody"></tbody>
+              </table>
             </div>
           </section>
 
@@ -358,37 +409,6 @@
             </form>
           </section>
 
-          <section class="panel account-holdings-panel">
-            <div class="panel-heading table-heading">
-              <div>
-                <p class="panel-kicker">持仓明细 <span id="accountTableSummary"></span></p>
-              </div>
-              <div class="table-actions">
-                <span class="account-live-label"><span class="status-dot" id="accountStatusDot"></span><span id="accountDataSource">当前价自动刷新</span></span>
-              </div>
-            </div>
-            <div class="table-scroll">
-              <table class="opportunity-table account-table">
-                <thead>
-                  <tr>
-                    <th>标的</th>
-                    <th id="accountBuyPriceHeader">买入价</th>
-                    <th id="accountTotalHeader">买入总价</th>
-                    <th id="accountCurrentPriceHeader">当前价</th>
-                    <th id="accountQuantityHeader">数量</th>
-                    <th id="accountProfitRateHeader">收益率</th>
-                    <th>收益</th>
-                    <th class="account-dividend-only">当前股息率</th>
-                    <th class="account-dividend-only">每年分红</th>
-                    <th>备注</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody id="accountTableBody"></tbody>
-              </table>
-            </div>
-          </section>
-
           <section class="panel dividend-panel account-dividend-calendar">
             <div class="panel-heading dividend-heading">
               <div>
@@ -432,7 +452,8 @@
       </footer>
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./stock-data.js"></script>
-    <script src="./app.js"></script>
+    <script src="./stock-data.js?v=20261009-live2"></script>
+    <script src="./stock-monitor-data.js?v=20261009-live2"></script>
+    <script src="./app.js?v=20261009-live2"></script>
   </body>
 </html>

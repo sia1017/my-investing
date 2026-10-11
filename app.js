@@ -19,6 +19,19 @@ const legacyStocks = [
 ];
 
 const stocks = globalThis.stockData || legacyStocks;
+const dividendReferenceCodes = [
+  "600015", "601818", "601166", "600016", "000001", "601997", "600941", "601838",
+  "600350", "600012", "600036", "601169", "600642", "601009", "601825", "601000",
+  "601229", "600023", "601328", "601006", "601916", "600377", "600018", "601128",
+  "600886", "601658", "001965", "601598", "600900", "600098", "601577", "002966",
+  "601077", "601728", "600919", "601398", "603565", "600008", "600674", "601939",
+  "600050", "601018", "600863", "600803", "601988", "001872", "601288", "600483",
+  "601998", "601088", "000088", "601665", "600926", "600000", "601298", "601225",
+  "600027", "003816", "600025", "603568", "600236", "601001", "600011", "601985",
+  "600971", "600795", "600188", "600323", "002142", "600362", "000878", "603993",
+  "601600", "000807", "601899"
+];
+const dividendReferenceCodeSet = new Set(dividendReferenceCodes);
 stocks.forEach((stock) => {
   const dividendPerShare = Number(stock.dividendPerShare);
   if (!Number.isFinite(dividendPerShare) || dividendPerShare < 0) {
@@ -77,9 +90,11 @@ const state = {
   cryptoSearch: "",
   cryptoSignal: "all",
   monitorSearch: "",
-  monitorSector: "all",
-  monitorWhitelist: true,
+  monitorCategory: "",
+  monitorDropRange: "",
+  monitorAOnly: false,
   accountType: "stock",
+  initialStockLoading: true,
   accountFormMarket: null,
   editingHoldingId: null,
   dividendProgress: "all",
@@ -98,6 +113,8 @@ let cryptoLastUpdatedAt = null;
 let cryptoLivePriceAvailable = false;
 let stockDataMode = "unavailable";
 let cryptoDataMode = "unavailable";
+let stockLastUpdatedAt = null;
+const accountStockQuotes = new Map();
 let dividendEvents = filterWhitelistDividends(dividendSnapshot).map((event) => ({ ...event }));
 let dividendDataMode = "snapshot";
 let dividendRefreshInFlight = false;
@@ -337,8 +354,10 @@ function renderDividendAll() {
         <td class="dividend-scheme">${escapeHtml(event.scheme)}</td>
       </tr>`;
   }).join("") : `<tr><td colspan="7" class="empty-state">当前筛选条件下没有分红记录。</td></tr>`;
-  $("#dividendCount").textContent = String(filtered.length);
-  $("#dividendTableBody").innerHTML = rowsHtml;
+  const dividendCount = $("#dividendCount");
+  if (dividendCount) dividendCount.textContent = String(filtered.length);
+  const dividendTableBody = $("#dividendTableBody");
+  if (dividendTableBody) dividendTableBody.innerHTML = rowsHtml;
   const sourceLabel = dividendDataMode === "remote"
     ? "东方财富公开数据 · 今日已更新"
     : dividendDataMode === "cache"
@@ -397,11 +416,47 @@ async function refreshDividendData({ force = false, manual = false } = {}) {
   if (manual) showToast(dividendDataMode === "remote" ? "分红数据已更新" : "实时分红接口暂不可用，已保留最近数据");
 }
 
+function normalizeHoldingRecord(holding, index = 0) {
+  if (!holding || typeof holding !== "object") return null;
+  const name = String(holding.name || holding.code || holding.marketKey || "").trim();
+  const code = String(holding.code || holding.marketKey || holding.name || "").trim();
+  if (!name && !code) return null;
+  const market = findMarketAsset(code) || findMarketAsset(name);
+  const inferredType = holding.marketType
+    || market?.type
+    || (String(code).toUpperCase() === "USD" || accountCryptoSymbols.has(String(code).toUpperCase()) ? "crypto" : "fixed");
+  const marketType = ["stock", "crypto", "fixed"].includes(inferredType) ? inferredType : "stock";
+  const marketKey = holding.marketKey
+    || market?.key
+    || (marketType === "crypto" ? String(code || name).toUpperCase() : code || name);
+  const displayName = holding.name || market?.displayName || name || code;
+  return {
+    ...holding,
+    id: Number.isFinite(Number(holding.id)) ? Number(holding.id) : Date.now() + index,
+    name: String(displayName).trim(),
+    code: String(code || marketKey || displayName).trim(),
+    marketKey: String(marketKey || code || displayName).trim(),
+    marketType,
+    buyPrice: Number(holding.buyPrice) || 0,
+    quantity: Number(holding.quantity) || 0,
+    dividendPerUnit: Number(holding.dividendPerUnit) || 0,
+    annualRate: Number(holding.annualRate) || 0
+  };
+}
+
+function normalizeHoldings(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map(normalizeHoldingRecord)
+    .filter(Boolean);
+}
+
 function loadHoldings() {
   try {
     const saved = window.localStorage.getItem("focus-radar-holdings");
     const parsed = saved ? JSON.parse(saved) : null;
-    return Array.isArray(parsed) ? parsed : defaultHoldings.map((holding) => ({ ...holding }));
+    const rows = Array.isArray(parsed) ? parsed : parsed?.holdings;
+    const normalized = normalizeHoldings(rows);
+    return normalized.length ? normalized : defaultHoldings.map((holding) => ({ ...holding }));
   } catch {
     return defaultHoldings.map((holding) => ({ ...holding }));
   }
@@ -436,15 +491,7 @@ function downloadHoldings() {
 function parseHoldingsPayload(payload) {
   const rows = Array.isArray(payload) ? payload : payload?.holdings;
   if (!Array.isArray(rows)) throw new Error("文件中没有 holdings 数组");
-  const normalized = rows
-    .filter((holding) => holding && typeof holding === "object")
-    .map((holding, index) => ({
-      ...holding,
-      id: Number.isFinite(Number(holding.id)) ? Number(holding.id) : Date.now() + index,
-      name: String(holding.name || holding.code || "").trim(),
-      code: String(holding.code || holding.name || "").trim()
-    }))
-    .filter((holding) => holding.name && holding.code);
+  const normalized = normalizeHoldings(rows);
   if (!normalized.length && rows.length) throw new Error("没有可识别的持仓记录");
   return normalized;
 }
@@ -479,7 +526,11 @@ function escapeHtml(value) {
 function findMarketAsset(query) {
   const normalized = String(query || "").trim().toLowerCase();
   if (!normalized) return null;
-  const stock = stocks.find((item) => `${item.name}${item.code}`.toLowerCase().includes(normalized));
+  const stockCode = normalized.match(/^(?:sh|sz|bj)?(\d{6})(?:\.(?:sh|sz|bj))?$/i)?.[1] || normalized;
+  const stock = stocks.find((item) => (
+    item.code === stockCode
+    || `${item.name}${item.code}`.toLowerCase().includes(normalized)
+  ));
   if (stock) return { asset: stock, type: "stock", key: stock.code, displayName: stock.name, code: stock.code };
   const crypto = cryptoAssets.find((item) => `${item.name}${item.symbol}`.toLowerCase().includes(normalized));
   if (crypto) return { asset: crypto, type: "crypto", key: crypto.symbol, displayName: crypto.name, code: crypto.symbol };
@@ -493,8 +544,25 @@ function findAccountMarket(query) {
 }
 
 function getHoldingMarket(holding) {
-  if (holding.marketType === "stock") return stocks.find((item) => item.code === holding.marketKey || item.code === holding.code) || null;
-  if (holding.marketType === "crypto") return cryptoAssets.find((item) => item.symbol === holding.marketKey) || null;
+  if (holding.marketType === "stock") {
+    const normalizedCode = String(holding.marketKey || holding.code || "")
+      .trim()
+      .match(/^(?:sh|sz|bj)?(\d{6})(?:\.(?:sh|sz|bj))?$/i)?.[1];
+    return stocks.find((item) => (
+      item.code === normalizedCode
+      || item.code === holding.marketKey
+      || item.code === holding.code
+      || item.name === holding.name
+      || item.name === holding.code
+    )) || null;
+  }
+  if (holding.marketType === "crypto") {
+    return cryptoAssets.find((item) => (
+      item.symbol === holding.marketKey
+      || item.symbol === holding.code
+      || item.name === holding.name
+    )) || null;
+  }
   return null;
 }
 
@@ -517,11 +585,18 @@ function getStockSignal(stock) {
 
 function getHoldingCurrentPrice(holding) {
   if (holding.marketType === "fixed") return Number(holding.buyPrice) || 0;
+  if (holding.marketType === "stock") {
+    const code = String(holding.marketKey || holding.code || "").trim()
+      .match(/^(?:sh|sz|bj)?(\d{6})(?:\.(?:sh|sz|bj))?$/i)?.[1];
+    const accountQuote = code ? accountStockQuotes.get(code) : null;
+    if (Number.isFinite(accountQuote?.price) && accountQuote.price > 0) return accountQuote.price;
+  }
   const market = getHoldingMarket(holding);
   return market ? Number(market.price) : Number(holding.manualCurrentPrice || holding.buyPrice);
 }
 
 function getAccountHoldings() {
+  holdings = normalizeHoldings(holdings);
   return holdings.filter((holding) => holding.marketType === state.accountType);
 }
 
@@ -549,14 +624,14 @@ function getAccountMeta() {
   }
   if (state.accountType === "fixed") {
     return {
-      title: "固定账户",
+      title: "现金账户",
       currency: "人民币",
       unit: "CNY",
-      marketLabel: "定期 / 现金 / 债券",
+      marketLabel: "活期",
       buyLabel: "单笔金额",
       currentLabel: "年化率",
       quantityLabel: "笔数",
-      buyHint: "定期、现金或债券的单笔金额",
+      buyHint: "活期现金的单笔金额",
       currentHint: "例如 2.50%",
       quantityHint: "通常填写 1",
       buyHeader: "单笔金额（w）",
@@ -589,14 +664,15 @@ function getAccountMeta() {
   };
 }
 
-function setAccountType(type) {
+function setAccountType(type, options = {}) {
   state.accountType = ["crypto", "fixed"].includes(type) ? type : "stock";
   const meta = getAccountMeta();
   $("#accountView").classList.toggle("is-crypto-account", state.accountType === "crypto");
   $("#accountView").classList.toggle("is-fixed-account", state.accountType === "fixed");
   $("#accountView").classList.toggle("is-stock-account", state.accountType === "stock");
+  const accountViewVisible = $("#accountView").classList.contains("is-active");
   $$(".account-type-tab").forEach((tab) => {
-    const active = tab.dataset.accountType === state.accountType;
+    const active = accountViewVisible && tab.dataset.accountType === state.accountType;
     tab.classList.toggle("is-active", active);
     tab.setAttribute("aria-selected", String(active));
   });
@@ -629,7 +705,7 @@ function setAccountType(type) {
   $("#accountCurrentPriceInput").placeholder = state.accountType === "fixed" ? "0.00%" : "自动获取";
   $("#accountCurrentPriceInput").step = state.accountType === "fixed" ? "0.01" : "0.0001";
   $("#accountBuyPriceInput").step = "0.001";
-  $("#accountDataSource").textContent = meta.isLive ? "当前价自动刷新" : "固定账户手动维护";
+  $("#accountDataSource").textContent = meta.isLive ? "当前价自动刷新" : "现金账户手动维护";
   $("#accountMetricValueLabel").textContent = state.accountType === "fixed" ? "总金额" : "持仓市值";
   $("#accountMetricValueMeta").textContent = state.accountType === "fixed" ? "单笔金额 × 笔数" : "当前行情估值";
   $("#accountMetricCostLabel").textContent = state.accountType === "fixed" ? "每年收益" : "投入成本";
@@ -660,7 +736,7 @@ function setAccountType(type) {
     $("#accountQuantityInput").value = "1";
   }
   // Recalculate after the account type and all display states have changed.
-  renderAccountAll();
+  if (options.render !== false) renderAccountAll();
 }
 
 function renderAccountHeaders() {
@@ -765,8 +841,25 @@ function updateMarketStatus() {
   );
 }
 
+function renderStockDataSourceStatus() {
+  const stockUpdatedLabel = stockLastUpdatedAt ? `股票更新 ${formatTime(stockLastUpdatedAt)}` : "";
+  const overviewSource = stockDataMode === "live"
+    ? ""
+    : isFilePage ? "请用 node server.mjs 打开" : "股票实时接口不可用";
+  const overviewDataSource = stockDataMode === "live"
+    ? stockUpdatedLabel
+    : isFilePage ? "请用 node server.mjs 打开以启用实时行情" : "股票实时接口不可用";
+  const monitorSource = stockDataMode === "live" ? "" : "等待股票行情";
+  const stockDataSource = $("#stockDataSource");
+  const overviewDataSourceEl = $("#overviewDataSource");
+  const stockMonitorDataSource = $("#stockMonitorDataSource");
+  if (stockDataSource) stockDataSource.textContent = overviewSource;
+  if (overviewDataSourceEl) overviewDataSourceEl.textContent = overviewDataSource;
+  if (stockMonitorDataSource) stockMonitorDataSource.textContent = monitorSource;
+}
+
 function stockMarketPrefix(code) {
-  return String(code).startsWith("6") ? "sh" : "sz";
+  return /^[569]/.test(String(code)) ? "sh" : "sz";
 }
 
 function parseTencentQuote(raw) {
@@ -782,97 +875,179 @@ function parseTencentQuote(raw) {
   };
 }
 
-async function loadStockQuotes() {
-  const codes = [...new Set(stocks.map((stock) => stock.code))];
-  const query = codes.map((code) => `${stockMarketPrefix(code)}${code}`).join(",");
-  const url = `https://qt.gtimg.cn/q=${query}&_=${Date.now()}`;
-  let proxyError = null;
-  if (marketApiBase) {
-    try {
-      const proxyResponse = await fetch(`${marketApiBase}/stocks?symbols=${codes.join(",")}&_=${Date.now()}`, { cache: "no-store" });
-      if (proxyResponse.ok) {
-        const proxyQuotes = await proxyResponse.json();
-        if (Object.keys(proxyQuotes).length) return proxyQuotes;
-      }
-      proxyError = new Error(`stock proxy HTTP ${proxyResponse.status}`);
-    } catch (error) {
-      proxyError = error;
-    }
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
   }
-  try {
-    const secids = codes.map((code) => `${stockMarketPrefix(code) === "sh" ? "1" : "0"}.${code}`).join(",");
+  return chunks;
+}
+
+async function loadEastmoneyStockQuotes(codes) {
+  const chunks = chunkArray(codes, 55);
+  const quoteGroups = await Promise.allSettled(chunks.map(async (chunk) => {
+    const secids = chunk.map((code) => `${stockMarketPrefix(code) === "sh" ? "1" : "0"}.${code}`).join(",");
     const eastmoneyResponse = await fetch(
       `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f12,f14,f18&secids=${secids}&_=${Date.now()}`,
       { cache: "no-store" }
     );
-    if (eastmoneyResponse.ok) {
-      const payload = await eastmoneyResponse.json();
-      const eastmoneyQuotes = {};
-      (Array.isArray(payload?.data?.diff) ? payload.data.diff : []).forEach((row) => {
-        const code = String(row.f12 || "");
-        const price = Number(row.f2);
-        const previousClose = Number(row.f18);
-        if (code && Number.isFinite(price) && price > 0) {
-          eastmoneyQuotes[code] = {
-            name: row.f14,
+    if (!eastmoneyResponse.ok) throw new Error(`eastmoney stock quote HTTP ${eastmoneyResponse.status}`);
+    const payload = await eastmoneyResponse.json();
+    const quotes = {};
+    (Array.isArray(payload?.data?.diff) ? payload.data.diff : []).forEach((row) => {
+      const code = String(row.f12 || "");
+      const price = Number(row.f2);
+      const previousClose = Number(row.f18);
+      if (code && Number.isFinite(price) && price > 0) {
+        quotes[code] = {
+          name: row.f14,
+          price,
+          previousClose: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price
+        };
+      }
+    });
+    return quotes;
+  }));
+  return quoteGroups.reduce((result, group) => {
+    if (group.status === "fulfilled") Object.assign(result, group.value);
+    return result;
+  }, {});
+}
+
+async function loadTencentStockQuotes(codes) {
+  const chunks = chunkArray(codes, 45);
+  const quoteGroups = await Promise.allSettled(chunks.map((chunk) => new Promise((resolve, reject) => {
+    const query = chunk.map((code) => `${stockMarketPrefix(code)}${code}`).join(",");
+    const url = `https://qt.gtimg.cn/q=${query}&_=${Date.now()}`;
+    const script = document.createElement("script");
+    const timeout = setTimeout(() => {
+      script.remove();
+      reject(new Error("stock quote timeout"));
+    }, 7000);
+    script.async = true;
+    script.src = url;
+    script.onload = () => {
+      clearTimeout(timeout);
+      const quotes = {};
+      chunk.forEach((code) => {
+        const key = `${stockMarketPrefix(code)}${code}`;
+        const parsed = parseTencentQuote(window[`v_${key}`]);
+        if (parsed) quotes[code] = parsed;
+      });
+      script.remove();
+      if (Object.keys(quotes).length) resolve(quotes);
+      else reject(new Error("empty stock quote script response"));
+    };
+    script.onerror = () => {
+      clearTimeout(timeout);
+      script.remove();
+      reject(new Error("stock quote script error"));
+    };
+    document.head.appendChild(script);
+  })));
+  return quoteGroups.reduce((result, group) => {
+    if (group.status === "fulfilled") Object.assign(result, group.value);
+    return result;
+  }, {});
+}
+
+async function loadSinaStockQuotes(codes) {
+  const chunks = chunkArray(codes, 45);
+  const quoteGroups = await Promise.allSettled(chunks.map((chunk) => new Promise((resolve, reject) => {
+    const query = chunk.map((code) => `${stockMarketPrefix(code)}${code}`).join(",");
+    const script = document.createElement("script");
+    const timeout = setTimeout(() => {
+      script.remove();
+      reject(new Error("sina stock quote timeout"));
+    }, 7000);
+    script.async = true;
+    script.charset = "GBK";
+    script.src = `https://hq.sinajs.cn/list=${query}&_=${Date.now()}`;
+    script.onload = () => {
+      clearTimeout(timeout);
+      const quotes = {};
+      chunk.forEach((code) => {
+        const key = `${stockMarketPrefix(code)}${code}`;
+        const fields = String(window[`hq_str_${key}`] || "").split(",");
+        const price = Number(fields[3]);
+        const previousClose = Number(fields[2]);
+        if (Number.isFinite(price) && price > 0) {
+          quotes[code] = {
+            name: fields[0],
             price,
             previousClose: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price
           };
         }
       });
-      if (Object.keys(eastmoneyQuotes).length) return eastmoneyQuotes;
+      script.remove();
+      if (Object.keys(quotes).length) resolve(quotes);
+      else reject(new Error("empty sina stock quote response"));
+    };
+    script.onerror = () => {
+      clearTimeout(timeout);
+      script.remove();
+      reject(new Error("sina stock quote script error"));
+    };
+    document.head.appendChild(script);
+  })));
+  return quoteGroups.reduce((result, group) => {
+    if (group.status === "fulfilled") Object.assign(result, group.value);
+    return result;
+  }, {});
+}
+
+async function loadStockQuotes(requestedCodes = stocks.map((stock) => stock.code)) {
+  const codes = [...new Set(requestedCodes)];
+  let proxyError = null;
+  if (marketApiBase) {
+    try {
+      const proxyGroups = await Promise.allSettled(chunkArray(codes, 60).map(async (chunk) => {
+        const proxyResponse = await fetch(`${marketApiBase}/stocks?symbols=${chunk.join(",")}&_=${Date.now()}`, { cache: "no-store" });
+        if (!proxyResponse.ok) throw new Error(`stock proxy HTTP ${proxyResponse.status}`);
+        return proxyResponse.json();
+      }));
+      const proxyQuotes = proxyGroups.reduce((result, group) => {
+        if (group.status === "fulfilled" && group.value && typeof group.value === "object") {
+          Object.assign(result, group.value);
+        }
+        return result;
+      }, {});
+      if (Object.keys(proxyQuotes).length) return proxyQuotes;
+      proxyError = new Error("empty stock proxy response");
+    } catch (error) {
+      proxyError = error;
     }
+  }
+  try {
+    const eastmoneyQuotes = await loadEastmoneyStockQuotes(codes);
+    if (Object.keys(eastmoneyQuotes).length) return eastmoneyQuotes;
   } catch {
     // Continue to Tencent JSONP as the final browser-safe fallback.
   }
   try {
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) throw new Error(`stock quote HTTP ${response.status}`);
-    const text = await response.text();
-    const quotes = {};
-    codes.forEach((code) => {
-      const key = `${stockMarketPrefix(code)}${code}`;
-      const match = text.match(new RegExp(`v_${key}="([^"]*)"`));
-      const parsed = parseTencentQuote(match?.[1]);
-      if (parsed) quotes[code] = parsed;
-    });
-    if (Object.keys(quotes).length) return quotes;
+    const tencentQuotes = await loadTencentStockQuotes(codes);
+    if (Object.keys(tencentQuotes).length) return tencentQuotes;
     throw new Error("empty stock quote response");
-  } catch {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      const timeout = setTimeout(() => {
-        script.remove();
-        reject(new Error("stock quote timeout"));
-      }, 7000);
-      script.async = true;
-      script.src = url;
-      script.onload = () => {
-        clearTimeout(timeout);
-        const quotes = {};
-        codes.forEach((code) => {
-          const key = `${stockMarketPrefix(code)}${code}`;
-          const parsed = parseTencentQuote(window[`v_${key}`]);
-          if (parsed) quotes[code] = parsed;
-        });
-        script.remove();
-        if (Object.keys(quotes).length) resolve(quotes);
-        else reject(new Error("empty stock quote script response"));
-      };
-      script.onerror = () => {
-        clearTimeout(timeout);
-        script.remove();
-        reject(new Error("stock quote script error"));
-      };
-      document.head.appendChild(script);
-    }).catch((error) => {
-      throw error || proxyError || new Error("stock quote unavailable");
-    });
+  } catch (error) {
+    try {
+      const sinaQuotes = await loadSinaStockQuotes(codes);
+      if (Object.keys(sinaQuotes).length) return sinaQuotes;
+    } catch {
+      // Keep the Tencent/proxy error below; it is usually more specific.
+    }
+    throw error || proxyError || new Error("stock quote unavailable");
   }
 }
 
 function applyStockQuotes(quotes) {
   let updated = 0;
+  Object.entries(quotes || {}).forEach(([rawCode, quote]) => {
+    const code = String(rawCode).match(/^(?:sh|sz|bj)?(\d{6})$/i)?.[1] || String(rawCode);
+    if (Number.isFinite(quote?.price) && quote.price > 0) {
+      accountStockQuotes.set(code, quote);
+      updated += 1;
+    }
+  });
   stocks.forEach((stock) => {
     const quote = quotes[stock.code];
     if (!quote || !Number.isFinite(quote.price)) return;
@@ -886,9 +1061,40 @@ function applyStockQuotes(quotes) {
     stock.drawdown = stock.price > 0 && stock.price > stock.first
       ? (stock.price - stock.first) / stock.price * 100
       : 0;
-    updated += 1;
   });
   return updated;
+}
+
+function getStockQuoteCodes() {
+  const holdingCodes = holdings
+    .filter((holding) => holding.marketType === "stock")
+    .map((holding) => String(holding.marketKey || holding.code || "").trim())
+    .map((code) => code.match(/^(?:sh|sz|bj)?(\d{6})(?:\.(?:sh|sz|bj))?$/i)?.[1])
+    .filter(Boolean);
+  return [...new Set([...stocks.map((stock) => stock.code), ...holdingCodes])];
+}
+
+async function refreshStockQuotesOnly(requestedCodes = getStockQuoteCodes()) {
+  try {
+    const updated = applyStockQuotes(await loadStockQuotes(requestedCodes)) > 0;
+    if (updated) {
+      stockLastUpdatedAt = new Date();
+      stockDataMode = "live";
+      updateMarketStatus();
+    }
+    return updated;
+  } catch {
+    stockDataMode = "unavailable";
+    updateMarketStatus();
+    return false;
+  }
+}
+
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs))
+  ]);
 }
 
 function buildFallbackTrendPoints(stock, period) {
@@ -1319,9 +1525,10 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
   // so a connected-but-silent stream cannot leave prices stale.
   const shouldRefreshCrypto = refreshCrypto;
   let cryptoUpdated = false;
-  const stockTask = loadStockQuotes()
+  const stockTask = loadStockQuotes(getStockQuoteCodes())
     .then((quotes) => {
       stockUpdated = applyStockQuotes(quotes) > 0;
+      if (stockUpdated) stockLastUpdatedAt = new Date();
       stockDataMode = stockUpdated ? "live" : "unavailable";
       renderAll();
       updateMarketStatus();
@@ -1348,50 +1555,49 @@ async function refreshLiveMarketData({ manual = false, refreshCrypto = manual } 
       .catch(() => {
         cryptoDataMode = "unavailable";
       });
-  await Promise.all([stockTask, cryptoTask]);
-  if (!stockUpdated) {
-    stockDataMode = "unavailable";
-  }
-  if (shouldRefreshCrypto && !cryptoUpdated) {
-    cryptoDataMode = "unavailable";
-    cryptoLivePriceAvailable = false;
-    setStatus("cryptoStatusDot", "cryptoStatusText", "实时接口不可用", "warning");
-    $("#cryptoDataSource").textContent = isFilePage
-      ? "请用 node server.mjs 打开"
-      : "手机直连行情不可用 · 最新价暂不显示";
-  }
-  renderAll();
-  if (shouldRefreshCrypto) {
-    setStatus(
-      "cryptoStatusDot",
-      "cryptoStatusText",
-      cryptoDataMode === "websocket" ? "加密市场实时在线" : cryptoDataMode === "live" ? "加密行情已同步" : "实时接口不可用",
-      cryptoDataMode === "live" || cryptoDataMode === "websocket" ? "live" : "warning"
-    );
-    if (cryptoDataMode === "live") {
-      const updatedLabel = cryptoLastUpdatedAt ? ` · 更新 ${formatTime(cryptoLastUpdatedAt)}` : "";
-      $("#cryptoDataSource").textContent = `实时行情 · 多源轮询兜底${updatedLabel}`;
+  try {
+    await Promise.all([stockTask, cryptoTask]);
+    if (!stockUpdated) {
+      stockDataMode = "unavailable";
     }
+    if (shouldRefreshCrypto && !cryptoUpdated) {
+      cryptoDataMode = "unavailable";
+      cryptoLivePriceAvailable = false;
+      setStatus("cryptoStatusDot", "cryptoStatusText", "实时接口不可用", "warning");
+      $("#cryptoDataSource").textContent = isFilePage
+        ? "请用 node server.mjs 打开"
+        : "手机直连行情不可用 · 最新价暂不显示";
+    }
+    renderAll();
+    if (shouldRefreshCrypto) {
+      setStatus(
+        "cryptoStatusDot",
+        "cryptoStatusText",
+        cryptoDataMode === "websocket" ? "加密市场实时在线" : cryptoDataMode === "live" ? "加密行情已同步" : "实时接口不可用",
+        cryptoDataMode === "live" || cryptoDataMode === "websocket" ? "live" : "warning"
+      );
+      if (cryptoDataMode === "live") {
+        const updatedLabel = cryptoLastUpdatedAt ? ` · 更新 ${formatTime(cryptoLastUpdatedAt)}` : "";
+        $("#cryptoDataSource").textContent = `实时行情 · 多源轮询兜底${updatedLabel}`;
+      }
+    }
+    renderStockDataSourceStatus();
+    updateMarketStatus();
+    if (manual) showToast(stockUpdated || cryptoUpdated ? "真实行情已刷新" : "实时接口暂不可用");
+  } finally {
+    liveRefreshInFlight = false;
   }
-  $("#stockDataSource").textContent = stockDataMode === "live"
-    ? "东方财富 / 腾讯行情 · 实时轮询"
-    : isFilePage ? "请用 node server.mjs 打开" : "股票实时接口不可用";
-  $("#overviewDataSource").textContent = stockDataMode === "live"
-    ? "东方财富 / 腾讯股票行情 · 每 5 秒轮询"
-    : isFilePage ? "请用 node server.mjs 打开以启用实时行情" : "股票实时接口不可用";
-  updateMarketStatus();
-  if (manual) showToast(stockUpdated || cryptoUpdated ? "真实行情已刷新" : "实时接口暂不可用");
-  liveRefreshInFlight = false;
 }
 
 function getVisibleStocks() {
   const query = state.search.trim().toLowerCase();
   return stocks
     .filter((stock) => {
+      const matchesReferencePool = dividendReferenceCodeSet.has(stock.code);
       const matchesQuery = !query || `${stock.name}${stock.code}${stock.sector}${stock.sub}`.toLowerCase().includes(query);
       const matchesSector = state.sector === "all" || stock.sector === state.sector;
       const matchesWhitelist = !state.whitelist || stock.whitelist;
-      return matchesQuery && matchesSector && matchesWhitelist;
+      return matchesReferencePool && matchesQuery && matchesSector && matchesWhitelist;
     })
     .sort((a, b) => {
       const priceA = Number(a.price) || 0;
@@ -1414,10 +1620,6 @@ function getVisibleStocks() {
 function renderOptions() {
   const sectors = [...new Set(stocks.map((stock) => stock.sector))];
   $("#sectorFilter").insertAdjacentHTML("beforeend", sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join(""));
-  const monitorSectorFilter = $("#stockMonitorSectorFilter");
-  if (monitorSectorFilter) {
-    monitorSectorFilter.insertAdjacentHTML("beforeend", sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join(""));
-  }
   const trendStocks = stocks;
   const trendSelect = $("#trendStockSelect");
   if (trendSelect) {
@@ -1426,57 +1628,94 @@ function renderOptions() {
   }
 }
 
-function getStockMonitorStatus(stock) {
-  const price = Number(stock.price) || 0;
-  const first = Number(stock.first) || 0;
-  const add = Number(stock.add) || 0;
-  if (add > 0 && price <= add) return { label: "加仓区", className: "is-add" };
-  if (first > 0 && price <= first) return { label: "首仓区", className: "is-first" };
-  const drawdownToFirst = first > 0 && price > first ? (price - first) / price * 100 : 0;
-  if (drawdownToFirst > 0 && drawdownToFirst <= 5) return { label: "接近", className: "is-near" };
-  return { label: "观察", className: "is-watch" };
+function getMonitorDataRows() {
+  return Array.isArray(globalThis.stockMonitorData) ? globalThis.stockMonitorData : [];
 }
 
-function getMonitorDrawdownToFirst(stock) {
-  const price = Number(stock.price) || 0;
-  const first = Number(stock.first) || 0;
-  if (!price || !first || price <= first) return 0;
-  return (price - first) / price * 100;
+function getMonitorMarketStock(row) {
+  return stocks.find((stock) => stock.code === row.code) || null;
+}
+
+function getMonitorDisplayPrice(row) {
+  const stock = getMonitorMarketStock(row);
+  const livePrice = Number(stock?.price);
+  return Number.isFinite(livePrice) && livePrice > 0 ? livePrice : Number(row.refPrice) || 0;
+}
+
+function getMonitorDrawdown(row) {
+  const price = getMonitorDisplayPrice(row);
+  const entry = Number(row.entry) || 0;
+  if (!price || !entry || price <= entry) return 0;
+  return (price - entry) / price * 100;
+}
+
+function getMonitorStatus(row) {
+  const drawdown = getMonitorDrawdown(row);
+  const price = getMonitorDisplayPrice(row);
+  const entry = Number(row.entry) || 0;
+  if (entry > 0 && price <= entry) return { key: "below", label: "已跌破买入价", className: "is-below" };
+  if (drawdown <= 5) return { key: "near5", label: "需跌 0–5%（接近）", className: "is-near" };
+  if (drawdown <= 10) return { key: "near10", label: "需跌 5–10%（中等）", className: "is-mid" };
+  return { key: "far", label: "需跌 ≥10%（较远）", className: "is-far" };
 }
 
 function getVisibleMonitorStocks() {
   const query = state.monitorSearch.trim().toLowerCase();
-  return stocks
-    .filter((stock) => {
-      const matchesQuery = !query || `${stock.name}${stock.code}${stock.sector}${stock.sub}`.toLowerCase().includes(query);
-      const matchesSector = state.monitorSector === "all" || stock.sector === state.monitorSector;
-      const matchesWhitelist = !state.monitorWhitelist || stock.whitelist;
-      return matchesQuery && matchesSector && matchesWhitelist;
+  const category = state.monitorCategory || "";
+  const dropRange = state.monitorDropRange || "";
+  const aOnly = state.monitorAOnly;
+  return getMonitorDataRows()
+    .filter((row) => {
+      const fullText = `${row.name}${row.code}${row.market}${row.category}`.toLowerCase();
+      const matchesQuery = !query || fullText.includes(query);
+      const matchesAOnly = !aOnly || ["SH", "SZ"].includes(row.market);
+      const matchesCategory = !category || row.category === category;
+      const status = getMonitorStatus(row).key;
+      const matchesDrop = !dropRange
+        || (dropRange === "below" && status === "below")
+        || (dropRange === "0-5" && status === "near5")
+        || (dropRange === "5-10" && status === "near10")
+        || (dropRange === "10+" && status === "far");
+      return matchesQuery && matchesAOnly && matchesCategory && matchesDrop;
     })
     .sort((a, b) => {
-      const statusRank = { "is-add": 0, "is-first": 1, "is-near": 2, "is-watch": 3 };
-      const rankA = statusRank[getStockMonitorStatus(a).className] ?? 9;
-      const rankB = statusRank[getStockMonitorStatus(b).className] ?? 9;
-      if (rankA !== rankB) return rankA - rankB;
-      return getMonitorDrawdownToFirst(a) - getMonitorDrawdownToFirst(b);
+      const rank = { below: 0, near5: 1, near10: 2, far: 3 };
+      const statusA = getMonitorStatus(a).key;
+      const statusB = getMonitorStatus(b).key;
+      if (rank[statusA] !== rank[statusB]) return rank[statusA] - rank[statusB];
+      return getMonitorDrawdown(a) - getMonitorDrawdown(b);
     });
 }
 
+function renderStockMonitorOptions() {
+  const select = $("#stockMonitorCategoryFilter");
+  if (!select || select.dataset.ready === "true") return;
+  const categories = [...new Set(getMonitorDataRows().map((row) => row.category).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "zh-CN"));
+  select.insertAdjacentHTML("beforeend", categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join(""));
+  select.dataset.ready = "true";
+}
+
 function renderStockMonitor() {
+  renderStockMonitorOptions();
+  const allRows = getMonitorDataRows();
   const visible = getVisibleMonitorStocks();
-  const triggered = visible.filter((stock) => Number(stock.price) <= Number(stock.first)).length;
-  const near = visible.filter((stock) => {
-    const drawdown = getMonitorDrawdownToFirst(stock);
-    return drawdown > 0 && drawdown <= 5;
-  }).length;
-  const averageYield = visible.length
-    ? visible.reduce((sum, stock) => sum + getStockCurrentYield(stock), 0) / visible.length
-    : 0;
+  const below = allRows.filter((row) => getMonitorStatus(row).key === "below").length;
+  const near5 = allRows.filter((row) => getMonitorStatus(row).key === "near5").length;
+  const near10 = allRows.filter((row) => getMonitorStatus(row).key === "near10").length;
+  const far = allRows.filter((row) => getMonitorStatus(row).key === "far").length;
+  const averageDrop = allRows.length ? allRows.reduce((sum, row) => sum + getMonitorDrawdown(row), 0) / allRows.length : 0;
+  const roeRows = allRows.filter((row) => Number.isFinite(Number(row.roe)));
+  const averageRoe = roeRows.length ? roeRows.reduce((sum, row) => sum + Number(row.roe), 0) / roeRows.length : 0;
   const metricMap = {
-    monitorMetricTotal: String(visible.length),
-    monitorMetricTriggered: String(triggered),
-    monitorMetricYield: formatNumber(averageYield),
-    monitorMetricNear: String(near),
+    stockMonitorLastUpdated: stockLastUpdatedAt ? formatTime(stockLastUpdatedAt) : "--:--:--",
+    stockMonitorDataSource: stockDataMode === "live" ? "" : "等待股票行情",
+    monitorMetricBelow: String(below),
+    monitorMetricNear5: String(near5),
+    monitorMetricNear10: String(near10),
+    monitorMetricFar: String(far),
+    monitorMetricAvgDrop: formatNumber(averageDrop),
+    monitorMetricAvgRoe: formatNumber(averageRoe),
     stockMonitorSummary: `显示 ${visible.length} 个标的`
   };
   Object.entries(metricMap).forEach(([id, text]) => {
@@ -1486,30 +1725,47 @@ function renderStockMonitor() {
   const source = $("#stockMonitorSource");
   if (source) {
     source.textContent = stockDataMode === "live"
-      ? "价格每 5 秒更新 · 按首仓价距离排序"
-      : "使用本地快照 · 按首仓价距离排序";
+      ? "实时行情 · 按需跌幅排序"
+      : "本地快照 · 按需跌幅排序";
   }
   const body = $("#stockMonitorTableBody");
   if (!body) return;
-  body.innerHTML = visible.map((stock) => {
-    const status = getStockMonitorStatus(stock);
-    const price = Number(stock.price) || 0;
-    const prev = Number(stock.prev) || price;
-    const change = prev > 0 ? (price / prev - 1) * 100 : 0;
-    const drawdown = getMonitorDrawdownToFirst(stock);
+  const groups = [
+    { key: "below", title: "已跌破买入价", rows: [] },
+    { key: "near5", title: "需跌 0–5%（接近）", rows: [] },
+    { key: "near10", title: "需跌 5–10%（中等）", rows: [] },
+    { key: "far", title: "需跌 ≥10%（较远）", rows: [] }
+  ];
+  visible.forEach((row) => {
+    const group = groups.find((item) => item.key === getMonitorStatus(row).key);
+    if (group) group.rows.push(row);
+  });
+  const rowsHtml = groups.map((group) => {
+    if (!group.rows.length) return "";
     return `
-      <tr>
-        <td><span class="monitor-status ${status.className}">${status.label}</span></td>
-        <td><span class="stock-name">${escapeHtml(stock.name)}</span><span class="stock-code">${escapeHtml(stock.code)} · ${escapeHtml(stock.sector || "")}${stock.sub ? ` / ${escapeHtml(stock.sub)}` : ""}</span></td>
-        <td class="price-cell">${formatNumber(stock.price)}</td>
-        <td class="${change >= 0 ? "positive-value" : "negative-value"}">${change >= 0 ? "+" : ""}${formatNumber(change)}%</td>
-        <td>${formatNumber(getStockCurrentYield(stock))}%</td>
-        <td class="${drawdown === 0 ? "positive-value" : "drawdown-cell"}">${formatNumber(drawdown)}%</td>
-        <td class="target-cell"><strong>${formatNumber(stock.first)}</strong></td>
-        <td class="target-cell ${price <= Number(stock.add) ? "is-triggered" : ""}"><strong>${formatNumber(stock.add)}</strong></td>
-        <td class="target-cell ${price <= Number(stock.heavy) ? "is-triggered" : ""}"><strong>${formatNumber(stock.heavy)}</strong></td>
-      </tr>`;
-  }).join("") || `<tr><td colspan="9" class="empty-state">没有符合条件的股票。</td></tr>`;
+      <tr class="monitor-group-row">
+        <td colspan="6"><span class="monitor-group-title">${group.title}</span><span class="monitor-group-count">${group.rows.length} 只</span></td>
+      </tr>
+      ${group.rows.map((row) => {
+        const price = getMonitorDisplayPrice(row);
+        const drawdown = getMonitorDrawdown(row);
+        const roe = Number.isFinite(Number(row.roe)) ? `${formatNumber(row.roe)}%` : "—";
+        const codeLabel = `${row.code}.${row.market}`;
+        const satellite = row.satellite
+          ? `<span class="monitor-satellite" aria-label="卫星标的" title="卫星标的">🛰</span>`
+          : "";
+        return `
+          <tr>
+            <td><span class="stock-name">${escapeHtml(row.name)}${satellite}</span><span class="stock-code">${escapeHtml(codeLabel)}</span></td>
+            <td>${escapeHtml(row.category)}</td>
+            <td class="target-cell"><strong>${formatNumber(row.entry)}</strong></td>
+            <td class="price-cell">${formatNumber(price)}</td>
+            <td class="${drawdown === 0 ? "positive-value" : "drawdown-cell"}">${drawdown === 0 ? "0.00%" : `+${formatNumber(drawdown)}%`}</td>
+            <td>${roe}</td>
+          </tr>`;
+      }).join("")}`;
+  }).join("");
+  body.innerHTML = rowsHtml || `<tr><td colspan="6" class="empty-state">没有符合条件的股票。</td></tr>`;
 }
 
 function renderMetrics() {
@@ -1932,13 +2188,32 @@ function renderAccountMetrics() {
   const accountTableSummary = $("#accountTableSummary");
   if (accountTableSummary) accountTableSummary.textContent = `共 ${getAccountHoldings().length} 笔持仓`;
   $("#accountLastUpdated").textContent = formatTime();
+  const accountDataSource = $("#accountDataSource");
+  if (accountDataSource) {
+    accountDataSource.textContent = state.accountType === "fixed"
+      ? "现金账户无需行情"
+      : stockDataMode === "live" && stockLastUpdatedAt
+        ? `股票行情更新 ${formatTime(stockLastUpdatedAt)}`
+        : "等待股票行情";
+  }
 }
 
 function renderAccountTable() {
+  if (state.accountType === "stock" && state.initialStockLoading) {
+    $("#accountTableBody").innerHTML = `
+      <tr>
+        <td colspan="12" class="account-empty-state">
+          <strong>正在同步实时行情</strong>
+          <span>首次进入先获取股票现价，稍后自动显示持仓明细。</span>
+        </td>
+      </tr>`;
+    return;
+  }
   const accountHoldings = getAccountHoldings().slice().sort((a, b) => {
-    const currentValueA = getHoldingCurrentPrice(a) * (Number(a.quantity) || 0);
-    const currentValueB = getHoldingCurrentPrice(b) * (Number(b.quantity) || 0);
-    return currentValueB - currentValueA;
+    const amountA = getHoldingCurrentPrice(a) * (Number(a.quantity) || 0);
+    const amountB = getHoldingCurrentPrice(b) * (Number(b.quantity) || 0);
+    const amountOrder = amountB - amountA;
+    return amountOrder || String(a.name || "").localeCompare(String(b.name || ""), "zh-CN");
   });
   const isFixed = state.accountType === "fixed";
   const summary = getAccountSummary();
@@ -2091,7 +2366,7 @@ function updateAccountFormPreview() {
     if (state.editingHoldingId == null) $("#accountCurrentPriceInput").value = "";
     if (!$("#accountQuantityInput").value) $("#accountQuantityInput").value = "1";
     $("#accountYieldInput").value = "";
-    $("#accountMarketHint").textContent = target.trim() ? "固定账户手动记录，不匹配股票或虚拟币行情" : "输入定期、现金等名称";
+    $("#accountMarketHint").textContent = target.trim() ? "现金账户手动记录，不匹配股票或虚拟币行情" : "输入活期现金名称";
     $("#accountMarketHint").className = target.trim() ? "form-hint-success" : "";
     return;
   }
@@ -2120,6 +2395,7 @@ function updateAccountFormPreview() {
 
 function renderAll() {
   renderMetrics();
+  renderStockDataSourceStatus();
   renderTrendChart();
   renderSectorChart();
   renderTable();
@@ -2260,17 +2536,24 @@ function bindEvents() {
       renderStockMonitor();
     });
   }
-  const monitorSectorFilter = $("#stockMonitorSectorFilter");
-  if (monitorSectorFilter) {
-    monitorSectorFilter.addEventListener("change", (event) => {
-      state.monitorSector = event.target.value;
+  const monitorCategoryFilter = $("#stockMonitorCategoryFilter");
+  if (monitorCategoryFilter) {
+    monitorCategoryFilter.addEventListener("change", (event) => {
+      state.monitorCategory = event.target.value;
       renderStockMonitor();
     });
   }
-  const monitorWhitelistToggle = $("#stockMonitorWhitelistToggle");
-  if (monitorWhitelistToggle) {
-    monitorWhitelistToggle.addEventListener("change", (event) => {
-      state.monitorWhitelist = event.target.checked;
+  const monitorDropFilter = $("#stockMonitorDropFilter");
+  if (monitorDropFilter) {
+    monitorDropFilter.addEventListener("change", (event) => {
+      state.monitorDropRange = event.target.value;
+      renderStockMonitor();
+    });
+  }
+  const monitorAOnlyToggle = $("#stockMonitorAOnlyToggle");
+  if (monitorAOnlyToggle) {
+    monitorAOnlyToggle.addEventListener("change", (event) => {
+      state.monitorAOnly = event.target.checked;
       renderStockMonitor();
     });
   }
@@ -2314,6 +2597,9 @@ function bindEvents() {
     $("#dividendView").classList.remove("is-active");
     $("#accountView").classList.add("is-active");
     setAccountType(button.dataset.accountType);
+    if (button.dataset.accountType === "stock") {
+      refreshLiveMarketData({ refreshCrypto: false });
+    }
   }));
   $("#accountForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2407,7 +2693,6 @@ function bindEvents() {
       $("#cryptoView").classList.remove("is-active");
       $("#accountView").classList.remove("is-active");
       $("#dividendView").classList.add("is-active");
-      refreshDividendData();
     } else if (button.dataset.view === "account") {
       $("#overviewView").classList.remove("is-active");
       $("#cryptoView").classList.remove("is-active");
@@ -2419,21 +2704,60 @@ function bindEvents() {
       $("#accountView").classList.remove("is-active");
       $("#overviewView").classList.add("is-active");
     }
+    if (button.dataset.view === "overview" || button.dataset.view === "calendar") {
+      refreshLiveMarketData({ refreshCrypto: false });
+    }
   }));
 }
 
-renderOptions();
-bindEvents();
-renderAll();
-setAccountType(state.accountType);
-updateAccountFormPreview();
-connectCryptoStream();
-refreshTrendHistory({ force: true });
-refreshLiveMarketData({ refreshCrypto: true });
-refreshUsdCnyRate();
-refreshDividendData();
+async function initializeDashboard() {
+  renderOptions();
+  bindEvents();
+  holdings = normalizeHoldings(holdings);
+  saveHoldings();
+  setAccountType(state.accountType);
+  updateAccountFormPreview();
+  connectCryptoStream();
+  renderMetrics();
+  renderTrendChart();
+  renderSectorChart();
+  renderTable();
+  renderStockMonitor();
+  renderCryptoAll();
+  renderDividendAll();
+  $("#lastUpdated").textContent = formatTime();
+  const finishInitialStockLoading = () => {
+    if (!state.initialStockLoading) return;
+    state.initialStockLoading = false;
+    renderAccountAll();
+  };
+  const initialStockFallbackTimer = setTimeout(finishInitialStockLoading, 6000);
+  try {
+    await withTimeout(refreshStockQuotesOnly(), 6000);
+  } finally {
+    clearTimeout(initialStockFallbackTimer);
+    finishInitialStockLoading();
+  }
+  renderAll();
+  refreshTrendHistory({ force: true });
+  refreshLiveMarketData({ refreshCrypto: true });
+  refreshUsdCnyRate();
+  refreshDividendData();
+}
 
-if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+initializeDashboard();
+
+if ("serviceWorker" in navigator && isLocalServer) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .then(() => window.caches?.keys?.())
+      .then((keys) => Promise.all((keys || []).map((key) => window.caches.delete(key))))
+      .catch(() => {
+        // Local development must keep live market data ahead of offline caching.
+      });
+  });
+} else if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register(`./sw.js?v=${Date.now()}`)
       .then((registration) => registration.update())

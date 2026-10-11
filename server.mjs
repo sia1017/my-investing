@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const port = Number(process.env.PORT || 4173);
-const host = process.env.HOST || "0.0.0.0";
+const host = process.env.HOST || "127.0.0.1";
 const stockCodes = [
   "600015",
   "601818",
@@ -219,7 +219,7 @@ function normalizeStockCode(value) {
 }
 
 function stockMarketPrefix(code) {
-  return String(code).startsWith("6") ? "sh" : "sz";
+  return /^[569]/.test(String(code)) ? "sh" : "sz";
 }
 
 function stockEastmoneySecId(code) {
@@ -228,10 +228,8 @@ function stockEastmoneySecId(code) {
 
 async function eastmoneyStockQuotes(codes) {
   const fields = "f2,f3,f12,f14,f18";
-  const result = {};
-  const batches = [];
-  for (let index = 0; index < codes.length; index += 80) batches.push(codes.slice(index, index + 80));
-  await Promise.all(batches.map(async (batch) => {
+  const batches = chunkArray(codes, 60);
+  const groups = await Promise.allSettled(batches.map(async (batch) => {
     const secids = batch.map(stockEastmoneySecId).join(",");
     const upstream = await fetch(
       `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=${fields}&secids=${secids}&_=${Date.now()}`,
@@ -243,20 +241,34 @@ async function eastmoneyStockQuotes(codes) {
     if (!upstream.ok) throw new Error(`Eastmoney quote HTTP ${upstream.status}`);
     const payload = await upstream.json();
     const rows = Array.isArray(payload?.data?.diff) ? payload.data.diff : [];
+    const batchResult = {};
     rows.forEach((row) => {
       const code = normalizeStockCode(row.f12);
       const price = Number(row.f2);
       const previousClose = Number(row.f18);
       if (code && Number.isFinite(price) && price > 0) {
-        result[code] = {
+        batchResult[code] = {
           price,
           previousClose: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price
         };
       }
     });
+    return batchResult;
   }));
+  const result = groups.reduce((quotes, group) => {
+    if (group.status === "fulfilled") Object.assign(quotes, group.value);
+    return quotes;
+  }, {});
   if (!Object.keys(result).length) throw new Error("Eastmoney returned no quotes");
   return result;
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 async function stockQuotes(searchParams) {
@@ -272,28 +284,72 @@ async function stockQuotes(searchParams) {
     lastError = error;
   }
   try {
-    const query = codes.map((code) => `${stockMarketPrefix(code)}${code}`).join(",");
-    const upstream = await fetch(`https://qt.gtimg.cn/q=${query}&_=${Date.now()}`, {
-      headers: { "User-Agent": "sia-investing-market-proxy/1.0" },
-      signal: AbortSignal.timeout(4500)
-    });
-    if (!upstream.ok) throw new Error(`Tencent quote HTTP ${upstream.status}`);
-    const raw = await upstream.arrayBuffer();
-    const bytes = Buffer.from(raw);
-    const result = {};
-    for (const code of codes) {
-      const key = `${stockMarketPrefix(code)}${code}`;
-      const marker = Buffer.from(`v_${key}="`);
-      const start = bytes.indexOf(marker);
-      if (start < 0) continue;
-      const valueStart = start + marker.length;
-      const end = bytes.indexOf(0x22, valueStart);
-      if (end < 0) continue;
-      const quote = parseTencentQuote(bytes.subarray(valueStart, end));
-      if (quote) result[code] = quote;
-    }
+    const groups = await Promise.allSettled(chunkArray(codes, 45).map(async (batch) => {
+      const query = batch.map((code) => `${stockMarketPrefix(code)}${code}`).join(",");
+      const upstream = await fetch(`https://qt.gtimg.cn/q=${query}&_=${Date.now()}`, {
+        headers: { "User-Agent": "sia-investing-market-proxy/1.0" },
+        signal: AbortSignal.timeout(4500)
+      });
+      if (!upstream.ok) throw new Error(`Tencent quote HTTP ${upstream.status}`);
+      const raw = await upstream.arrayBuffer();
+      const bytes = Buffer.from(raw);
+      const batchResult = {};
+      for (const code of batch) {
+        const key = `${stockMarketPrefix(code)}${code}`;
+        const marker = Buffer.from(`v_${key}="`);
+        const start = bytes.indexOf(marker);
+        if (start < 0) continue;
+        const valueStart = start + marker.length;
+        const end = bytes.indexOf(0x22, valueStart);
+        if (end < 0) continue;
+        const quote = parseTencentQuote(bytes.subarray(valueStart, end));
+        if (quote) batchResult[code] = quote;
+      }
+      return batchResult;
+    }));
+    const result = groups.reduce((quotes, group) => {
+      if (group.status === "fulfilled") Object.assign(quotes, group.value);
+      return quotes;
+    }, {});
     if (Object.keys(result).length) return result;
     throw new Error("Tencent returned no quotes");
+  } catch (error) {
+    lastError = error;
+  }
+  try {
+    const groups = await Promise.allSettled(chunkArray(codes, 45).map(async (batch) => {
+      const query = batch.map((code) => `${stockMarketPrefix(code)}${code}`).join(",");
+      const upstream = await fetch(`https://hq.sinajs.cn/list=${query}&_=${Date.now()}`, {
+        headers: {
+          "Referer": "https://finance.sina.com.cn/",
+          "User-Agent": "Mozilla/5.0"
+        },
+        signal: AbortSignal.timeout(4500)
+      });
+      if (!upstream.ok) throw new Error(`Sina quote HTTP ${upstream.status}`);
+      const text = Buffer.from(await upstream.arrayBuffer()).toString("latin1");
+      const batchResult = {};
+      for (const code of batch) {
+        const key = `${stockMarketPrefix(code)}${code}`;
+        const match = text.match(new RegExp(`hq_str_${key}="([^"]*)"`));
+        const fields = match?.[1]?.split(",");
+        const price = Number(fields?.[3]);
+        const previousClose = Number(fields?.[2]);
+        if (Number.isFinite(price) && price > 0) {
+          batchResult[code] = {
+            price,
+            previousClose: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price
+          };
+        }
+      }
+      return batchResult;
+    }));
+    const result = groups.reduce((quotes, group) => {
+      if (group.status === "fulfilled") Object.assign(quotes, group.value);
+      return quotes;
+    }, {});
+    if (Object.keys(result).length) return result;
+    throw new Error("Sina returned no quotes");
   } catch (error) {
     lastError = error;
   }
